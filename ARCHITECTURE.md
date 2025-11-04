@@ -128,20 +128,6 @@ Route Table (Private)
 └── Result: All traffic stays within VPC
 ```
 
-**How Route Table Works:**
-
-1. **Subnet Association**: Both private subnets are associated with the same route table
-2. **Routing Decision**: When Lambda sends traffic, the route table checks:
-   - Is destination in VPC (10.0.0.0/16)? → Route locally to VPC Endpoint
-   - Is destination outside VPC? → No route (traffic blocked - no internet gateway)
-3. **Traffic Flow**: 
-   - Lambda → Route Table → VPC Endpoint (local route)
-   - No internet access possible (no IGW route)
-
-**Why Route Table Matters:**
-- **Enforces Private Network**: Ensures Lambda can only reach resources within the VPC
-- **Routes to VPC Endpoints**: Directs traffic to VPC Endpoints for AWS service access
-- **No Internet Access**: Without an Internet Gateway route, Lambda cannot access the internet
 
 ### Security Groups
 
@@ -154,16 +140,6 @@ VPC Endpoint Security Group (Inbound)
 └── Allow: HTTPS (443) ← Lambda Security Group
 ```
 
-### EC2 Service Block
-
-**What is the EC2 Service Block?**
-
-The **EC2 Service** block represents AWS's managed EC2 service that stores and manages your EC2 snapshots. It's shown as a separate block because:
-
-1. **AWS Managed Service**: EC2 is a regional AWS service managed by AWS, not a resource you create in your VPC
-2. **Outside Your VPC**: EC2 snapshots are stored in AWS's infrastructure, not inside your VPC
-3. **Accessed via API**: Your Lambda function accesses EC2 snapshots through the EC2 API (via VPC Endpoint), not through direct network connection
-
 **Key Points:**
 
 ```
@@ -174,11 +150,6 @@ EC2 Service (AWS Managed)
 └── Connection: Through VPC Endpoint → AWS internal network → EC2 Service
 ```
 
-**Why It's Separate from VPC:**
-
-- Your VPC contains: Lambda, VPC Endpoints, Subnets, Security Groups (resources you create)
-- EC2 Service is: AWS's managed service (you don't create it, you use it)
-- Communication flow: Lambda → VPC Endpoint → AWS Backend → EC2 Service
 
 **Request/Response Flow (Bidirectional):**
 
