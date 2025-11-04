@@ -1,0 +1,281 @@
+# AWS Lambda EC2 Snapshot Cleanup - Architecture Diagram
+
+## Architecture Overview
+
+```mermaid
+graph TB
+    subgraph AWS["AWS Cloud"]
+        subgraph VPC["VPC (Private Only)"]
+            subgraph PrivateSubnets["Private Subnets (2 AZs)"]
+                Lambda["Lambda Function<br/>Python 3.11<br/>Snapshot Cleanup"]
+                VPCEndpointEC2["VPC Endpoint<br/>EC2 API"]
+                VPCEndpointLogs["VPC Endpoint<br/>CloudWatch Logs"]
+            end
+            
+            LambdaSG["Security Group<br/>Lambda"]
+            VPCEndpointSG["Security Group<br/>VPC Endpoints"]
+            
+            RouteTable["Route Table<br/>Local Routes Only"]
+        end
+        
+        subgraph IAM["IAM"]
+            LambdaRole["IAM Role<br/>Lambda Execution"]
+            LambdaPolicy["IAM Policy<br/>EC2 Permissions"]
+        end
+        
+        subgraph EventBridge["EventBridge"]
+            EventRule["EventBridge Rule<br/>Scheduled Trigger<br/>(Daily at 2 AM UTC)"]
+        end
+        
+        subgraph CloudWatch["CloudWatch"]
+            LogGroup["CloudWatch Log Group<br/>Lambda Logs<br/>(14-day retention)"]
+            Metrics["CloudWatch Metrics<br/>Invocations, Errors, Duration"]
+        end
+        
+        subgraph EC2["EC2 Service<br/>(AWS Managed Service)"]
+            Snapshots["EC2 Snapshots<br/>(Region-wide)"]
+        end
+        
+        subgraph CI_CD["CI/CD"]
+            GitHubActions["GitHub Actions<br/>Terraform Workflows"]
+        end
+    end
+    
+    %% Flow connections
+    EventRule -->|Triggers| Lambda
+    Lambda -->|Writes Logs| VPCEndpointLogs
+    VPCEndpointLogs -->|Forwards| LogGroup
+    Lambda -->|API Request| VPCEndpointEC2
+    VPCEndpointEC2 -->|API Request| Snapshots
+    Snapshots -->|Response Data| VPCEndpointEC2
+    VPCEndpointEC2 -->|Response Data| Lambda
+    Lambda -->|Checks| LambdaRole
+    LambdaRole -->|Has Permissions| LambdaPolicy
+    LambdaPolicy -->|Allows| Snapshots
+    
+    %% Network connections
+    LambdaSG -.->|Egress| VPCEndpointSG
+    VPCEndpointSG -.->|Ingress| LambdaSG
+    
+    %% Route table connections
+    PrivateSubnets -.->|Associated with| RouteTable
+    Lambda -.->|Routes via| RouteTable
+    VPCEndpointEC2 -.->|Routes via| RouteTable
+    VPCEndpointLogs -.->|Routes via| RouteTable
+    RouteTable -.->|Routes to| VPCEndpointEC2
+    RouteTable -.->|Routes to| VPCEndpointLogs
+    
+    %% Infrastructure
+    GitHubActions -.->|Deploys| VPC
+    GitHubActions -.->|Deploys| Lambda
+    GitHubActions -.->|Deploys| EventBridge
+    
+    %% Styling
+    classDef lambda fill:#ff9900,stroke:#ff6600,stroke-width:2px,color:#fff
+    classDef vpc fill:#232f3e,stroke:#146eb4,stroke-width:2px,color:#fff
+    classDef iam fill:#dd344c,stroke:#a3123a,stroke-width:2px,color:#fff
+    classDef monitoring fill:#759c3e,stroke:#4a722f,stroke-width:2px,color:#fff
+    classDef storage fill:#7aa116,stroke:#5d7a0f,stroke-width:2px,color:#fff
+    
+    class Lambda,VPCEndpointEC2,VPCEndpointLogs lambda
+    class VPC,PrivateSubnets,LambdaSG,VPCEndpointSG,RouteTable vpc
+    class LambdaRole,LambdaPolicy iam
+    class EventRule,LogGroup,Metrics monitoring
+    class Snapshots storage
+```
+
+## Component Details
+
+### Network Layer
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                      VPC (10.0.0.0/16)                   │
+│                                                          │
+│  ┌──────────────────────┐  ┌──────────────────────┐    │
+│  │ Private Subnet 1    │  │ Private Subnet 2     │    │
+│  │ (AZ-1)              │  │ (AZ-2)               │    │
+│  │ 10.0.0.0/24         │  │ 10.0.1.0/24          │    │
+│  │                      │  │                      │    │
+│  │  ┌──────────────┐   │  │  ┌──────────────┐    │    │
+│  │  │ Lambda       │   │  │  │ VPC Endpoint │    │    │
+│  │  │ Function     │   │  │  │ EC2 (ENI)    │    │    │
+│  │  └──────────────┘   │  │  └──────────────┘    │    │
+│  │                      │  │                      │    │
+│  │  ┌──────────────┐   │  │  ┌──────────────┐    │    │
+│  │  │ VPC Endpoint │   │  │  │ VPC Endpoint │    │    │
+│  │  │ Logs (ENI)   │   │  │  │ EC2 (ENI)    │    │    │
+│  │  └──────────────┘   │  │  └──────────────┘    │    │
+│  └──────────────────────┘  └──────────────────────┘    │
+│                                                          │
+│  Route Table: Local routes only (no Internet Gateway)  │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Route Table
+
+**What is a Route Table?**
+A Route Table determines where network traffic from your subnets is directed. Every subnet must be associated with a route table.
+
+**In This Architecture:**
+
+```
+Route Table (Private)
+├── Associated with: Private Subnets (2 AZs)
+├── Routes:
+│   ├── 10.0.0.0/16 → Local (VPC CIDR)
+│   └── No Internet Gateway route
+└── Result: All traffic stays within VPC
+```
+
+**How Route Table Works:**
+
+1. **Subnet Association**: Both private subnets are associated with the same route table
+2. **Routing Decision**: When Lambda sends traffic, the route table checks:
+   - Is destination in VPC (10.0.0.0/16)? → Route locally to VPC Endpoint
+   - Is destination outside VPC? → No route (traffic blocked - no internet gateway)
+3. **Traffic Flow**: 
+   - Lambda → Route Table → VPC Endpoint (local route)
+   - No internet access possible (no IGW route)
+
+**Why Route Table Matters:**
+- **Enforces Private Network**: Ensures Lambda can only reach resources within the VPC
+- **Routes to VPC Endpoints**: Directs traffic to VPC Endpoints for AWS service access
+- **No Internet Access**: Without an Internet Gateway route, Lambda cannot access the internet
+
+### Security Groups
+
+```
+Lambda Security Group (Outbound)
+├── Allow: HTTPS (443) → VPC Endpoint Security Group
+└── No inbound rules
+
+VPC Endpoint Security Group (Inbound)
+└── Allow: HTTPS (443) ← Lambda Security Group
+```
+
+### EC2 Service Block
+
+**What is the EC2 Service Block?**
+
+The **EC2 Service** block represents AWS's managed EC2 service that stores and manages your EC2 snapshots. It's shown as a separate block because:
+
+1. **AWS Managed Service**: EC2 is a regional AWS service managed by AWS, not a resource you create in your VPC
+2. **Outside Your VPC**: EC2 snapshots are stored in AWS's infrastructure, not inside your VPC
+3. **Accessed via API**: Your Lambda function accesses EC2 snapshots through the EC2 API (via VPC Endpoint), not through direct network connection
+
+**Key Points:**
+
+```
+EC2 Service (AWS Managed)
+├── Location: AWS regional infrastructure (not in your VPC)
+├── Contains: All EC2 snapshots in your AWS account/region
+├── Access: Via EC2 API calls (DescribeSnapshots, DeleteSnapshot)
+└── Connection: Through VPC Endpoint → AWS internal network → EC2 Service
+```
+
+**Why It's Separate from VPC:**
+
+- Your VPC contains: Lambda, VPC Endpoints, Subnets, Security Groups (resources you create)
+- EC2 Service is: AWS's managed service (you don't create it, you use it)
+- Communication flow: Lambda → VPC Endpoint → AWS Backend → EC2 Service
+
+**Request/Response Flow (Bidirectional):**
+
+```
+REQUEST (Lambda → EC2):
+Lambda Function
+  ↓ (HTTPS API Request: describe_snapshots())
+VPC Endpoint (EC2 API)
+  ↓ (AWS internal network)
+EC2 Service (AWS managed)
+  ↓ (queries)
+EC2 Snapshots
+
+RESPONSE (EC2 → Lambda):
+EC2 Snapshots
+  ↑ (snapshot data: IDs, creation dates, tags, etc.)
+EC2 Service (AWS managed)
+  ↑ (HTTPS API Response)
+VPC Endpoint (EC2 API)
+  ↑ (response data returned)
+Lambda Function
+```
+
+**How Lambda Gets Data Back:**
+
+1. **Lambda sends request**: `boto3.client('ec2').describe_snapshots()` → HTTPS request to VPC Endpoint
+2. **VPC Endpoint forwards**: Request goes to AWS EC2 Service backend
+3. **EC2 Service queries**: Retrieves snapshot data from its database
+4. **EC2 Service responds**: Sends back JSON response with snapshot list
+5. **VPC Endpoint returns**: Response comes back through VPC Endpoint
+6. **Lambda receives data**: Lambda function gets the response with snapshot information
+
+**Example Response Data Lambda Receives:**
+```python
+{
+  'Snapshots': [
+    {
+      'SnapshotId': 'snap-1234567890',
+      'StartTime': datetime(2023, 1, 1),
+      'State': 'completed',
+      'Tags': [...]
+    },
+    ...
+  ]
+}
+```
+
+**Security Groups Allow Both Directions:**
+- Lambda egress: Allows Lambda to send requests OUT
+- VPC Endpoint ingress: Allows VPC Endpoint to receive requests IN
+- VPC Endpoint egress: Allows VPC Endpoint to send responses OUT (default AWS behavior)
+- Lambda ingress: Allows Lambda to receive responses IN (default AWS behavior for established connections)
+
+### Data Flow
+
+```
+1. EventBridge Rule triggers Lambda (scheduled)
+   ↓
+2. Lambda function starts execution
+   ↓
+3. Lambda queries EC2 API via VPC Endpoint
+   ├── List all snapshots (DescribeSnapshots)
+   ├── Check snapshot age (older than retention period)
+   ├── Check exclusion tags (if configured)
+   └── Delete old snapshots (DeleteSnapshot)
+   ↓
+4. Lambda writes logs to CloudWatch via VPC Endpoint
+   ↓
+5. CloudWatch Logs stores execution logs (14-day retention)
+   ↓
+6. CloudWatch Metrics captures invocation metrics
+```
+
+## Deployment Flow
+
+```
+┌─────────────┐
+│ GitHub Push │
+└──────┬──────┘
+       │
+       ▼
+┌──────────────────┐
+│ GitHub Actions   │
+│ Terraform Workflow│
+└──────┬───────────┘
+       │
+       ├──► terraform init
+       ├──► terraform validate
+       ├──► terraform fmt
+       ├──► terraform plan
+       └──► terraform apply (on main branch)
+       │
+       ▼
+┌──────────────────┐
+│ AWS Resources    │
+│ Created/Updated  │
+└──────────────────┘
+```
+
+
