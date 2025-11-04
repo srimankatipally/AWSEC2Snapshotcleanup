@@ -188,30 +188,6 @@ aws lambda invoke \
 2. Run Lambda function
 3. Verify tagged snapshot is not deleted
 
-### Lambda Cannot Access EC2 API
-
-1. **VPC Configuration:**
-   - Verify Lambda in private subnet
-   - Verify VPC Endpoints are in "available" state
-   - Check route tables (local routes only)
-
-2. **Security Groups:**
-   - Lambda SG: Outbound HTTPS (443) to VPC Endpoint SG
-   - VPC Endpoint SG: Inbound HTTPS (443) from Lambda SG
-
-3. **VPC Endpoints:**
-   - EC2 VPC Endpoint: Available state
-   - CloudWatch Logs VPC Endpoint: Available state
-   - Both in same subnets as Lambda
-
-4. **IAM Permissions:** Verify Lambda role has `ec2:DescribeSnapshots`, `ec2:DeleteSnapshot`
-
-### Snapshots Not Being Deleted
-
-1. Check CloudWatch Logs for errors
-2. Verify IAM permissions: `ec2:DeleteSnapshot`
-3. Check snapshot state (some may be in use and cannot be deleted)
-
 ### Lambda Function Timing Out
 
 Increase timeout in `terraform/main.tf`:
