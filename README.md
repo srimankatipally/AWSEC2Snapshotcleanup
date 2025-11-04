@@ -9,7 +9,7 @@ Automated solution for cleaning up old EC2 snapshots using AWS Lambda in a VPC w
 - **Automated Scheduling**: EventBridge triggers Lambda on configurable schedule (default: daily at 2 AM UTC)
 - **VPC Endpoints**: Private communication with EC2 API and CloudWatch Logs (no internet required)
 
-## Architecture
+## Architecture(./ARCHITECTURE.md)
 
 
 **Key Components:**
