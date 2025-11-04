@@ -68,13 +68,13 @@ This repository includes GitHub Actions workflows for automated testing and depl
      - `AWS_ACCESS_KEY_ID`: AWS access key for deployment
      - `AWS_SECRET_ACCESS_KEY`: AWS secret key for deployment
 
-2. **Workflow Features:**
-   - ✅ Terraform validation and formatting checks
-   - ✅ Security scanning with tfsec
-   - ✅ Automated plan on PRs (commented on PR)
-   - ✅ Automated apply on merge to main/master
-   - ✅ Python linting and syntax validation
-   - ✅ Terraform output artifacts
+2. **Workflow :**
+   - Terraform validation and formatting checks
+   - Security scanning with tfsec
+   - Automated plan on PRs (commented on PR)
+   - Automated apply on merge to main/master
+   - Python linting and syntax validation
+   - Terraform output artifacts
 
 3. **Manual Workflow Trigger:**
    ```bash
