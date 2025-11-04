@@ -45,13 +45,7 @@ jobs:
         continue-on-error: true
 
       - name: Terraform Init
-        run: |
-          # Check if backend is configured
-          if grep -q "backend \"s3\"" backend.tf 2>/dev/null && ! grep -q "^#.*backend" backend.tf; then
-            terraform init
-          else
-            terraform init -backend=false
-          fi
+        run: terraform init -backend=false
 
       - name: Terraform Validate
         run: terraform validate
