@@ -11,7 +11,6 @@ Automated solution for cleaning up old EC2 snapshots using AWS Lambda in a VPC w
 
 ## Architecture
 
-For detailed architecture diagram and design, see [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 **Key Components:**
 - **VPC**: Private subnets only (no internet access)
