@@ -13,7 +13,7 @@ Automated solution for cleaning up old EC2 snapshots using AWS Lambda in a VPC w
 
 
 **Key Components:**
-- **VPC**: Private subnets only (no internet access)
+- **VPC**: Private subnets
 - **VPC Endpoints**: Interface endpoints for EC2 API and CloudWatch Logs
 - **Lambda Function**: Runs in private subnet, accesses AWS services via VPC Endpoints
 - **IAM Role**: Least privilege permissions for EC2 operations and logging
