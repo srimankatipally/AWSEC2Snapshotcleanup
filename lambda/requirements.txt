@@ -1,0 +1,6 @@
+# Lambda function dependencies
+# Note: boto3 is provided by AWS Lambda runtime, but included here for local testing
+
+boto3>=1.40.0
+botocore>=1.40.0
+
