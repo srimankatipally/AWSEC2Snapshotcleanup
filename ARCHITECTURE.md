@@ -108,7 +108,7 @@ graph TB
 │  │  └──────────────┘   │  │  └──────────────┘    │    │
 │  └──────────────────────┘  └──────────────────────┘    │
 │                                                          │
-│  Route Table: Local routes only (no Internet Gateway)  │
+│  Route Table: Local routes only
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -124,7 +124,7 @@ Route Table (Private)
 ├── Associated with: Private Subnets (2 AZs)
 ├── Routes:
 │   ├── 10.0.0.0/16 → Local (VPC CIDR)
-│   └── No Internet Gateway route
+│   
 └── Result: All traffic stays within VPC
 ```
 
