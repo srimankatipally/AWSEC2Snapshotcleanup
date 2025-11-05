@@ -13,6 +13,8 @@ on:
     branches:
       - main
       - master
+      - develop
+      - dev
     paths:
       - 'terraform/**'
       - 'lambda/**'
