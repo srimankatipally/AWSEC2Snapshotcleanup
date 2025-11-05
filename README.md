@@ -2,8 +2,8 @@
 
 Automated solution for cleaning up old EC2 snapshots using AWS Lambda in a VPC with VPC Endpoints. The Lambda function automatically identifies and deletes EC2 snapshots older than a specified retention period (default: 365 days).
 
-
 ## Overview
+
 - **Terraform Infrastructure**: VPC, private subnets, VPC Endpoints, IAM roles, Lambda function, EventBridge rule
 - **Lambda Function**: Python 3.11 function that identifies and deletes old EC2 snapshots
 - **Automated Scheduling**: EventBridge triggers Lambda on configurable schedule (default: daily at 2 AM UTC)
@@ -11,6 +11,7 @@ Automated solution for cleaning up old EC2 snapshots using AWS Lambda in a VPC w
 
 ## Architecture(ARCHITECTURE.md)
 
+See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture documentation.
 
 **Key Components:**
 - **VPC**: Private subnets
@@ -43,6 +44,23 @@ terraform plan  # Shows any permission errors
 
 ## Quick Start
 
+### 1. Bootstrap Backend
+
+```bash
+cd backend
+terraform init
+terraform apply -var-file=env/dev.tfvars  # For dev environment
+```
+
+### 2. Deploy Infrastructure
+
+```bash
+cd terraform
+terraform init -backend-config=backend-dev.hcl
+terraform apply -var-file=../env/dev/terraform.tfvars
+```
+
+See [terraform/README.md](terraform/README.md) for detailed deployment instructions.
 
 ## CI/CD with GitHub Actions
 
@@ -195,6 +213,31 @@ Increase timeout in `terraform/main.tf`:
 timeout = 600  # 10 minutes
 ```
 
+## Project Structure
 
 ```
+AWS/
+├── backend/              # Backend infrastructure (S3 + DynamoDB)
+│   ├── env/              # Environment-specific backend configs
+│   └── README.md
+├── terraform/            # Main infrastructure
+│   ├── env/              # Environment-specific configs
+│   └── README.md
+├── lambda/               # Lambda function code
+│   ├── lambda_function.py
+│   └── requirements.txt
+├── env/                  # Environment tfvars
+│   ├── dev/
+│   └── prod/
+└── .github/workflows/    # CI/CD workflows
+```
+
+## Environment Management
+
+The project supports multiple environments (dev, prod) with:
+- Separate backend resources per environment
+- Environment-specific Terraform configurations
+- Environment-specific variable files
+
+See [terraform/README.md](terraform/README.md) and [backend/README.md](backend/README.md) for details.
 

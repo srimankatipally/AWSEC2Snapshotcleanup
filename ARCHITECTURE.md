@@ -36,6 +36,11 @@ graph TB
             Snapshots["EC2 Snapshots<br/>(Region-wide)"]
         end
         
+        subgraph Backend["Terraform Backend<br/>(State Management)"]
+            S3Bucket["S3 Bucket<br/>State Storage<br/>Versioning Enabled"]
+            DynamoDB["DynamoDB Table<br/>State Locking<br/>Pay-per-request"]
+        end
+        
         subgraph CI_CD["CI/CD"]
             GitHubActions["GitHub Actions<br/>Terraform Workflows"]
         end
@@ -66,9 +71,13 @@ graph TB
     RouteTable -.->|Routes to| VPCEndpointLogs
     
     %% Infrastructure
+    GitHubActions -.->|Bootstrap| S3Bucket
+    GitHubActions -.->|Bootstrap| DynamoDB
     GitHubActions -.->|Deploys| VPC
     GitHubActions -.->|Deploys| Lambda
     GitHubActions -.->|Deploys| EventBridge
+    GitHubActions -.->|Stores State| S3Bucket
+    GitHubActions -.->|Locks State| DynamoDB
     
     %% Styling
     classDef lambda fill:#ff9900,stroke:#ff6600,stroke-width:2px,color:#fff
@@ -76,12 +85,14 @@ graph TB
     classDef iam fill:#dd344c,stroke:#a3123a,stroke-width:2px,color:#fff
     classDef monitoring fill:#759c3e,stroke:#4a722f,stroke-width:2px,color:#fff
     classDef storage fill:#7aa116,stroke:#5d7a0f,stroke-width:2px,color:#fff
+    classDef backend fill:#9467bd,stroke:#6b4390,stroke-width:2px,color:#fff
     
     class Lambda,VPCEndpointEC2,VPCEndpointLogs lambda
     class VPC,PrivateSubnets,LambdaSG,VPCEndpointSG,RouteTable vpc
     class LambdaRole,LambdaPolicy iam
     class EventRule,LogGroup,Metrics monitoring
     class Snapshots storage
+    class S3Bucket,DynamoDB backend
 ```
 
 ## Component Details
@@ -223,7 +234,88 @@ Lambda Function
 6. CloudWatch Metrics captures invocation metrics
 ```
 
+## Infrastructure Layers
+
+This architecture consists of two infrastructure layers:
+
+### 1. Backend Infrastructure (Terraform State Management)
+
+**Purpose**: Provides remote state storage and locking for Terraform operations.
+
+```
+┌─────────────────────────────────────────┐
+│      Terraform Backend Infrastructure   │
+│                                         │
+│  ┌──────────────┐  ┌──────────────┐   │
+│  │ S3 Bucket    │  │ DynamoDB     │   │
+│  │              │  │ Table        │   │
+│  │ • Versioning │  │ • Pay-per-   │   │
+│  │ • Encryption │  │   request    │   │
+│  │ • Lifecycle  │  │ • LockID key │   │
+│  └──────────────┘  └──────────────┘   │
+│                                         │
+│  Environment-Specific:                 │
+│  • dev-ec2-snapshot-cleanup            │
+│  • prod-ec2-snapshot-cleanup           │
+└─────────────────────────────────────────┘
+```
+
+**Components:**
+- **S3 Bucket**: Stores Terraform state files with versioning and encryption
+- **DynamoDB Table**: Provides state locking to prevent concurrent modifications
+- **Environment Isolation**: Separate backends per environment (dev/prod)
+
+### 2. Application Infrastructure (Snapshot Cleanup)
+
+**Purpose**: The actual EC2 snapshot cleanup solution (as shown in the main diagram above).
+
 ## Deployment Flow
+
+### Complete Deployment Process
+
+```
+┌─────────────────────────────────────────┐
+│          Deployment Workflow             │
+└─────────────────────────────────────────┘
+
+Step 1: Bootstrap Backend (One-time per environment)
+┌─────────────────────────────────────────┐
+│  cd backend/                               │
+│  terraform init                            │
+│  terraform apply -var-file=env/dev.tfvars  │
+└─────────────────────────────────────────┘
+       │
+       ▼
+┌─────────────────────────────────────────┐
+│  Creates:                                 │
+│  • S3 Bucket (dev-ec2-snapshot-cleanup)  │
+│  • DynamoDB Table (dev-terraform-state-  │
+│    lock)                                  │
+└─────────────────────────────────────────┘
+       │
+       ▼
+Step 2: Deploy Application Infrastructure
+┌─────────────────────────────────────────┐
+│  cd terraform/                            │
+│  terraform init -backend-config=          │
+│    backend-dev.hcl                        │
+│  terraform apply -var-file=               │
+│    ../env/dev/terraform.tfvars           │
+└─────────────────────────────────────────┘
+       │
+       ▼
+┌─────────────────────────────────────────┐
+│  Creates:                                 │
+│  • VPC with Private Subnets              │
+│  • Lambda Function                        │
+│  • VPC Endpoints                         │
+│  • IAM Roles & Policies                  │
+│  • EventBridge Rule                      │
+│  • CloudWatch Log Group                  │
+└─────────────────────────────────────────┘
+```
+
+### CI/CD Pipeline Flow
 
 ```
 ┌─────────────┐
@@ -231,22 +323,86 @@ Lambda Function
 └──────┬──────┘
        │
        ▼
-┌──────────────────┐
-│ GitHub Actions   │
-│ Terraform Workflow│
-└──────┬───────────┘
-       │
-       ├──► terraform init
-       ├──► terraform validate
-       ├──► terraform fmt
-       ├──► terraform plan
-       └──► terraform apply (on main branch)
+┌─────────────────────────────────────────┐
+│      GitHub Actions Workflow             │
+│                                         │
+│  ├──► terraform validate                │
+│  ├──► terraform fmt (check)             │
+│  ├──► terraform plan                    │
+│  └──► terraform apply (on main branch)  │
+│                                         │
+│  Note: Assumes backend already exists   │
+└──────┬──────────────────────────────────┘
        │
        ▼
-┌──────────────────┐
-│ AWS Resources    │
-│ Created/Updated  │
-└──────────────────┘
+┌─────────────────────────────────────────┐
+│  State Management:                       │
+│  • Reads state from S3                   │
+│  • Acquires lock in DynamoDB             │
+│  • Updates state in S3                   │
+│  • Releases lock in DynamoDB             │
+└─────────────────────────────────────────┘
+       │
+       ▼
+┌─────────────────────────────────────────┐
+│  AWS Resources Created/Updated          │
+└─────────────────────────────────────────┘
 ```
+
+## Project Structure
+
+```
+AWS/
+├── backend/                    # Backend infrastructure (Terraform state)
+│   ├── env/                    # Environment-specific backend configs
+│   │   ├── dev.tfvars         # Dev backend: dev-ec2-snapshot-cleanup
+│   │   └── prod.tfvars        # Prod backend: prod-ec2-snapshot-cleanup
+│   ├── s3.tf                  # S3 bucket configuration
+│   ├── dynamodb.tf            # DynamoDB table configuration
+│   └── README.md              # Backend setup instructions
+│
+├── terraform/                  # Main application infrastructure
+│   ├── main.tf                # VPC, Lambda, VPC Endpoints, etc.
+│   ├── provider.tf            # Provider & backend configuration
+│   ├── backend-dev.hcl        # Backend config for dev
+│   ├── backend-prod.hcl       # Backend config for prod
+│   └── README.md              # Deployment instructions
+│
+├── env/                        # Environment-specific variables
+│   ├── dev/
+│   │   └── terraform.tfvars   # Dev environment variables
+│   └── prod/
+│       └── terraform.tfvars   # Prod environment variables
+│
+├── lambda/                     # Lambda function code
+│   ├── lambda_function.py     # Python 3.11 snapshot cleanup
+│   └── requirements.txt       # Python dependencies
+│
+└── .github/workflows/          # CI/CD workflows
+    ├── terraform.yml          # Terraform validation & deployment
+    └── lambda-test.yml       # Lambda code validation
+```
+
+## Environment Management
+
+The architecture supports **multi-environment deployments** with complete isolation:
+
+### Environment Isolation
+
+| Component | Dev Environment | Prod Environment |
+|-----------|----------------|-----------------|
+| **Backend S3** | `dev-ec2-snapshot-cleanup` | `prod-ec2-snapshot-cleanup` |
+| **Backend DynamoDB** | `dev-terraform-state-lock` | `prod-terraform-state-lock` |
+| **Lambda Function** | `dev-ec2-snapshot-cleanup` | `prod-ec2-snapshot-cleanup` |
+| **VPC** | `dev-snapshot-cleanup-vpc` | `prod-snapshot-cleanup-vpc` |
+| **State File** | `terraform.tfstate` (in dev bucket) | `terraform.tfstate` (in prod bucket) |
+
+### Benefits of Environment Isolation
+
+1. **State Isolation**: Each environment has its own state storage
+2. **Independent Deployments**: Deploy to dev/prod independently
+3. **Resource Isolation**: Resources are clearly separated by environment
+4. **Security**: Reduced risk of cross-environment access
+5. **Cost Tracking**: Easier to track costs per environment
 
 

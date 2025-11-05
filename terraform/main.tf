@@ -1,33 +1,3 @@
-terraform {
-  required_version = ">= 1.0"
-
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-    archive = {
-      source  = "hashicorp/archive"
-      version = "~> 2.2"
-    }
-  }
-}
-
-provider "aws" {
-  region = var.aws_region
-
-  default_tags {
-    tags = merge(
-      {
-        Environment = var.environment
-        ManagedBy   = "Terraform"
-        Project     = "EC2-Snapshot-Cleanup"
-      },
-      var.tags
-    )
-  }
-}
-
 # Data source to get available AZs
 data "aws_availability_zones" "available" {
   state = "available"
@@ -46,13 +16,15 @@ resource "aws_vpc" "main" {
 
 # Private Subnets (for Lambda and VPC Endpoints)
 resource "aws_subnet" "private" {
-  count             = 2
+  for_each = {
+    for idx, az in slice(data.aws_availability_zones.available.names, 0, 2) : idx => az
+  }
   vpc_id            = aws_vpc.main.id
-  cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index)
-  availability_zone = data.aws_availability_zones.available.names[count.index]
+  cidr_block        = cidrsubnet(var.vpc_cidr, 8, each.key)
+  availability_zone = each.value
 
   tags = {
-    Name = "${var.environment}-snapshot-cleanup-private-${count.index + 1}"
+    Name = "${var.environment}-snapshot-cleanup-private-${each.key + 1}"
     Type = "private"
   }
 }
@@ -68,8 +40,8 @@ resource "aws_route_table" "private" {
 
 # Route Table Association for Private Subnets
 resource "aws_route_table_association" "private" {
-  count          = length(aws_subnet.private)
-  subnet_id      = aws_subnet.private[count.index].id
+  for_each       = aws_subnet.private
+  subnet_id      = each.value.id
   route_table_id = aws_route_table.private.id
 }
 
@@ -120,7 +92,7 @@ resource "aws_vpc_endpoint" "ec2" {
   vpc_id              = aws_vpc.main.id
   service_name        = "com.amazonaws.${var.aws_region}.ec2"
   vpc_endpoint_type   = "Interface"
-  subnet_ids          = aws_subnet.private[*].id
+  subnet_ids          = [for subnet in aws_subnet.private : subnet.id]
   security_group_ids  = [aws_security_group.vpc_endpoint_sg.id]
   private_dns_enabled = true
 
@@ -134,7 +106,7 @@ resource "aws_vpc_endpoint" "cloudwatch_logs" {
   vpc_id              = aws_vpc.main.id
   service_name        = "com.amazonaws.${var.aws_region}.logs"
   vpc_endpoint_type   = "Interface"
-  subnet_ids          = aws_subnet.private[*].id
+  subnet_ids          = [for subnet in aws_subnet.private : subnet.id]
   security_group_ids  = [aws_security_group.vpc_endpoint_sg.id]
   private_dns_enabled = true
 
@@ -201,7 +173,7 @@ resource "aws_iam_role_policy_attachment" "lambda_logs" {
 
 # CloudWatch Log Group
 resource "aws_cloudwatch_log_group" "lambda_logs" {
-  name              = "/aws/lambda/${var.lambda_function_name}"
+  name              = "/aws/lambda/${var.environment}-${var.lambda_function_name}"
   retention_in_days = 14
 
   tags = {
@@ -219,7 +191,7 @@ data "archive_file" "lambda_zip" {
 # Lambda Function
 resource "aws_lambda_function" "snapshot_cleanup" {
   filename         = data.archive_file.lambda_zip.output_path
-  function_name    = var.lambda_function_name
+  function_name    = "${var.environment}-${var.lambda_function_name}"
   role            = aws_iam_role.lambda_exec.arn
   handler         = "lambda_function.lambda_handler"
   source_code_hash = data.archive_file.lambda_zip.output_base64sha256
@@ -238,7 +210,7 @@ resource "aws_lambda_function" "snapshot_cleanup" {
 
   # VPC Configuration
   vpc_config {
-    subnet_ids         = aws_subnet.private[*].id
+    subnet_ids         = [for subnet in aws_subnet.private : subnet.id]
     security_group_ids = [aws_security_group.lambda_sg.id]
   }
 
@@ -248,25 +220,25 @@ resource "aws_lambda_function" "snapshot_cleanup" {
   ]
 
   tags = {
-    Name = var.lambda_function_name
+    Name = "${var.environment}-${var.lambda_function_name}"
   }
 }
 
 # EventBridge Rule (CloudWatch Events)
 resource "aws_cloudwatch_event_rule" "daily_trigger" {
-  name                = "${var.lambda_function_name}-daily-trigger"
+  name                = "${var.environment}-${var.lambda_function_name}-daily-trigger"
   description         = "Trigger Lambda function daily to clean up old snapshots"
   schedule_expression = var.schedule_expression
 
   tags = {
-    Name = "${var.lambda_function_name}-daily-trigger"
+    Name = "${var.environment}-${var.lambda_function_name}-daily-trigger"
   }
 }
 
 # EventBridge Target
 resource "aws_cloudwatch_event_target" "lambda_target" {
   rule      = aws_cloudwatch_event_rule.daily_trigger.name
-  target_id = "${var.lambda_function_name}-target"
+  target_id = "${var.environment}-${var.lambda_function_name}-target"
   arn       = aws_lambda_function.snapshot_cleanup.arn
 }
 
