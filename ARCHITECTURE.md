@@ -97,48 +97,6 @@ graph TB
 
 ## Component Details
 
-### Network Layer
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                      VPC (10.0.0.0/16)                   │
-│                                                          │
-│  ┌──────────────────────┐  ┌──────────────────────┐    │
-│  │ Private Subnet 1    │  │ Private Subnet 2     │    │
-│  │ (AZ-1)              │  │ (AZ-2)               │    │
-│  │ 10.0.0.0/24         │  │ 10.0.1.0/24          │    │
-│  │                      │  │                      │    │
-│  │  ┌──────────────┐   │  │  ┌──────────────┐    │    │
-│  │  │ Lambda       │   │  │  │ VPC Endpoint │    │    │
-│  │  │ Function     │   │  │  │ EC2 (ENI)    │    │    │
-│  │  └──────────────┘   │  │  └──────────────┘    │    │
-│  │                      │  │                      │    │
-│  │  ┌──────────────┐   │  │  ┌──────────────┐    │    │
-│  │  │ VPC Endpoint │   │  │  │ VPC Endpoint │    │    │
-│  │  │ Logs (ENI)   │   │  │  │ EC2 (ENI)    │    │    │
-│  │  └──────────────┘   │  │  └──────────────┘    │    │
-│  └──────────────────────┘  └──────────────────────┘    │
-│                                                          │
-│  Route Table: Local routes only
-└─────────────────────────────────────────────────────────┘
-```
-
-### Route Table
-
-**What is a Route Table?**
-A Route Table determines where network traffic from your subnets is directed. Every subnet must be associated with a route table.
-
-**In This Architecture:**
-
-```
-Route Table (Private)
-├── Associated with: Private Subnets (2 AZs)
-├── Routes:
-│   ├── 10.0.0.0/16 → Local (VPC CIDR)
-│   
-└── Result: All traffic stays within VPC
-```
-
 
 ### Security Groups
 
