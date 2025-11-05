@@ -60,7 +60,6 @@ terraform init -backend-config=backend-dev.hcl
 terraform apply -var-file=../env/dev/terraform.tfvars
 ```
 
-See [terraform/README.md](terraform/README.md) for detailed deployment instructions.
 
 ## CI/CD with GitHub Actions
 
@@ -239,5 +238,4 @@ The project supports multiple environments (dev, prod) with:
 - Environment-specific Terraform configurations
 - Environment-specific variable files
 
-See [terraform/README.md](terraform/README.md) and [backend/README.md](backend/README.md) for details.
 
