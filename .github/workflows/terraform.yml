@@ -128,6 +128,14 @@ jobs:
           terraform plan -no-color -out=tfplan-dev -var-file=../../../environment/dev/terraform.tfvars > plan_output_dev.txt 2>&1
         continue-on-error: true
 
+      - name: Show Plan Output (DEV)
+        if: steps.plan-dev.outcome == 'failure'
+        run: |
+          echo "❌ Terraform Plan failed. Output:"
+          echo "=================================="
+          cat plan_output_dev.txt
+          echo "=================================="
+
       - name: Terraform Plan Status (DEV)
         if: steps.plan-dev.outcome == 'failure'
         run: exit 1
@@ -239,6 +247,14 @@ jobs:
         run: |
           terraform plan -no-color -out=tfplan-prod -var-file=../../../environment/prod/terraform.tfvars > plan_output_prod.txt 2>&1
         continue-on-error: true
+
+      - name: Show Plan Output (PROD)
+        if: steps.plan-prod.outcome == 'failure'
+        run: |
+          echo "❌ Terraform Plan failed. Output:"
+          echo "=================================="
+          cat plan_output_prod.txt
+          echo "=================================="
 
       - name: Terraform Plan Status (PROD)
         if: steps.plan-prod.outcome == 'failure'
