@@ -58,12 +58,12 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Init
-        run: terraform init -backend-config=../../../environment/${{ inputs.environment }}/backend.hcl
+        run: terraform init -backend-config=${{ github.workspace }}/environment/${{ inputs.environment }}/backend.hcl
 
       - name: Terraform Plan (Destroy)
         id: plan-destroy
         run: |
-          terraform plan -destroy -no-color -var-file=../../../environment/${{ inputs.environment }}/terraform.tfvars > destroy_plan.txt 2>&1
+          terraform plan -destroy -no-color -var-file=${{ github.workspace }}/environment/${{ inputs.environment }}/terraform.tfvars > destroy_plan.txt 2>&1
         continue-on-error: true
 
       - name: Show Destroy Plan
@@ -94,7 +94,7 @@ jobs:
           echo ""
           echo "⏳ Destroying infrastructure..."
           
-          terraform destroy -auto-approve -var-file=../../../environment/${{ inputs.environment }}/terraform.tfvars
+          terraform destroy -auto-approve -var-file=${{ github.workspace }}/environment/${{ inputs.environment }}/terraform.tfvars
 
       - name: Destroy Summary
         if: always()

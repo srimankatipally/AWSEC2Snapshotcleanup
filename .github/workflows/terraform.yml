@@ -120,12 +120,12 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Init (DEV)
-        run: terraform init -backend-config=../../../environment/dev/backend.hcl
+        run: terraform init -backend-config=${{ github.workspace }}/environment/dev/backend.hcl
 
       - name: Terraform Plan (DEV)
         id: plan-dev
         run: |
-          terraform plan -no-color -out=tfplan-dev -var-file=../../../environment/dev/terraform.tfvars > plan_output_dev.txt 2>&1
+          terraform plan -no-color -out=tfplan-dev -var-file=${{ github.workspace }}/environment/dev/terraform.tfvars > plan_output_dev.txt 2>&1
         continue-on-error: true
 
       - name: Show Plan Output (DEV)
@@ -195,14 +195,14 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Init (DEV)
-        run: terraform init -backend-config=../../../environment/dev/backend.hcl
+        run: terraform init -backend-config=${{ github.workspace }}/environment/dev/backend.hcl
 
       - name: Terraform Apply (DEV)
-        run: terraform apply -auto-approve -var-file=../../../environment/dev/terraform.tfvars
+        run: terraform apply -auto-approve -var-file=${{ github.workspace }}/environment/dev/terraform.tfvars
 
       - name: Terraform Output (DEV)
         id: output-dev
-        run: terraform output -json > ../../../environment/dev/output.json
+        run: terraform output -json > ${{ github.workspace }}/environment/dev/output.json
         continue-on-error: true
 
       - name: Upload Terraform Output (DEV)
@@ -240,12 +240,12 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Init (PROD)
-        run: terraform init -backend-config=../../../environment/prod/backend.hcl
+        run: terraform init -backend-config=${{ github.workspace }}/environment/prod/backend.hcl
 
       - name: Terraform Plan (PROD)
         id: plan-prod
         run: |
-          terraform plan -no-color -out=tfplan-prod -var-file=../../../environment/prod/terraform.tfvars > plan_output_prod.txt 2>&1
+          terraform plan -no-color -out=tfplan-prod -var-file=${{ github.workspace }}/environment/prod/terraform.tfvars > plan_output_prod.txt 2>&1
         continue-on-error: true
 
       - name: Show Plan Output (PROD)
@@ -315,14 +315,14 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Init (PROD)
-        run: terraform init -backend-config=../../../environment/prod/backend.hcl
+        run: terraform init -backend-config=${{ github.workspace }}/environment/prod/backend.hcl
 
       - name: Terraform Apply (PROD)
-        run: terraform apply -auto-approve -var-file=../../../environment/prod/terraform.tfvars
+        run: terraform apply -auto-approve -var-file=${{ github.workspace }}/environment/prod/terraform.tfvars
 
       - name: Terraform Output (PROD)
         id: output-prod
-        run: terraform output -json > ../../../environment/prod/output.json
+        run: terraform output -json > ${{ github.workspace }}/environment/prod/output.json
         continue-on-error: true
 
       - name: Upload Terraform Output (PROD)
