@@ -150,12 +150,14 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
       - name: Setup Backend Config
         run: |
-          BUCKET_NAME=$(aws s3api list-buckets --query "Buckets[?starts_with(Name, 'dev-ec2-snapshot-cleanup')].Name" --output text 2>/dev/null | head -1 || grep -E "^bucket\s*=" ${{ github.workspace }}/environment/dev/backend.hcl | sed -E 's/^[^"]*"([^"]+)".*/\1/' | head -1 || echo "")
+          BUCKET_NAME=$(aws s3api list-buckets --query "Buckets[?starts_with(Name, 'dev-ec2-snapshot-cleanup')].Name" --output text 2>/dev/null | tr '\t' '\n' | head -1 || grep -E "^bucket\s*=" ${{ github.workspace }}/environment/dev/backend.hcl 2>/dev/null | sed -E 's/^[^"]*"([^"]+)".*/\1/' | head -1 || echo "")
           [ -z "$BUCKET_NAME" ] && echo "❌ Could not find backend bucket" && exit 1
-          echo "# Backend configuration for dev environment" > ${{ github.workspace }}/environment/dev/backend.hcl
-          echo "# Auto-generated bucket name: $BUCKET_NAME" >> ${{ github.workspace }}/environment/dev/backend.hcl
-          echo "bucket         = \"$BUCKET_NAME\"" >> ${{ github.workspace }}/environment/dev/backend.hcl
-          echo "dynamodb_table = \"dev-terraform-state-lock\"" >> ${{ github.workspace }}/environment/dev/backend.hcl
+          cat > ${{ github.workspace }}/environment/dev/backend.hcl <<EOF
+          # Backend configuration for dev environment
+          # Auto-generated bucket name: $BUCKET_NAME
+          bucket         = "$BUCKET_NAME"
+          dynamodb_table = "dev-terraform-state-lock"
+          EOF
       - name: Terraform Init
         run: terraform init -backend-config=${{ github.workspace }}/environment/dev/backend.hcl
       - name: Terraform Plan
@@ -196,12 +198,14 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
       - name: Setup Backend Config
         run: |
-          BUCKET_NAME=$(aws s3api list-buckets --query "Buckets[?starts_with(Name, 'prod-ec2-snapshot-cleanup')].Name" --output text 2>/dev/null | head -1 || grep -E "^bucket\s*=" ${{ github.workspace }}/environment/prod/backend.hcl | sed -E 's/^[^"]*"([^"]+)".*/\1/' | head -1 || echo "")
+          BUCKET_NAME=$(aws s3api list-buckets --query "Buckets[?starts_with(Name, 'prod-ec2-snapshot-cleanup')].Name" --output text 2>/dev/null | tr '\t' '\n' | head -1 || grep -E "^bucket\s*=" ${{ github.workspace }}/environment/prod/backend.hcl 2>/dev/null | sed -E 's/^[^"]*"([^"]+)".*/\1/' | head -1 || echo "")
           [ -z "$BUCKET_NAME" ] && echo "❌ Could not find backend bucket" && exit 1
-          echo "# Backend configuration for prod environment" > ${{ github.workspace }}/environment/prod/backend.hcl
-          echo "# Auto-generated bucket name: $BUCKET_NAME" >> ${{ github.workspace }}/environment/prod/backend.hcl
-          echo "bucket         = \"$BUCKET_NAME\"" >> ${{ github.workspace }}/environment/prod/backend.hcl
-          echo "dynamodb_table = \"prod-terraform-state-lock\"" >> ${{ github.workspace }}/environment/prod/backend.hcl
+          cat > ${{ github.workspace }}/environment/prod/backend.hcl <<EOF
+          # Backend configuration for prod environment
+          # Auto-generated bucket name: $BUCKET_NAME
+          bucket         = "$BUCKET_NAME"
+          dynamodb_table = "prod-terraform-state-lock"
+          EOF
       - name: Terraform Init
         run: terraform init -backend-config=${{ github.workspace }}/environment/prod/backend.hcl
       - name: Terraform Plan
@@ -242,12 +246,14 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
       - name: Setup Backend Config
         run: |
-          BUCKET_NAME=$(aws s3api list-buckets --query "Buckets[?starts_with(Name, 'dev-ec2-snapshot-cleanup')].Name" --output text 2>/dev/null | head -1 || grep -E "^bucket\s*=" ${{ github.workspace }}/environment/dev/backend.hcl | sed -E 's/^[^"]*"([^"]+)".*/\1/' | head -1 || echo "")
+          BUCKET_NAME=$(aws s3api list-buckets --query "Buckets[?starts_with(Name, 'dev-ec2-snapshot-cleanup')].Name" --output text 2>/dev/null | tr '\t' '\n' | head -1 || grep -E "^bucket\s*=" ${{ github.workspace }}/environment/dev/backend.hcl 2>/dev/null | sed -E 's/^[^"]*"([^"]+)".*/\1/' | head -1 || echo "")
           [ -z "$BUCKET_NAME" ] && echo "❌ Could not find backend bucket" && exit 1
-          echo "# Backend configuration for dev environment" > ${{ github.workspace }}/environment/dev/backend.hcl
-          echo "# Auto-generated bucket name: $BUCKET_NAME" >> ${{ github.workspace }}/environment/dev/backend.hcl
-          echo "bucket         = \"$BUCKET_NAME\"" >> ${{ github.workspace }}/environment/dev/backend.hcl
-          echo "dynamodb_table = \"dev-terraform-state-lock\"" >> ${{ github.workspace }}/environment/dev/backend.hcl
+          cat > ${{ github.workspace }}/environment/dev/backend.hcl <<EOF
+          # Backend configuration for dev environment
+          # Auto-generated bucket name: $BUCKET_NAME
+          bucket         = "$BUCKET_NAME"
+          dynamodb_table = "dev-terraform-state-lock"
+          EOF
       - name: Terraform Init
         run: terraform init -backend-config=${{ github.workspace }}/environment/dev/backend.hcl
       - name: Terraform Apply
@@ -284,12 +290,14 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
       - name: Setup Backend Config
         run: |
-          BUCKET_NAME=$(aws s3api list-buckets --query "Buckets[?starts_with(Name, 'prod-ec2-snapshot-cleanup')].Name" --output text 2>/dev/null | head -1 || grep -E "^bucket\s*=" ${{ github.workspace }}/environment/prod/backend.hcl | sed -E 's/^[^"]*"([^"]+)".*/\1/' | head -1 || echo "")
+          BUCKET_NAME=$(aws s3api list-buckets --query "Buckets[?starts_with(Name, 'prod-ec2-snapshot-cleanup')].Name" --output text 2>/dev/null | tr '\t' '\n' | head -1 || grep -E "^bucket\s*=" ${{ github.workspace }}/environment/prod/backend.hcl 2>/dev/null | sed -E 's/^[^"]*"([^"]+)".*/\1/' | head -1 || echo "")
           [ -z "$BUCKET_NAME" ] && echo "❌ Could not find backend bucket" && exit 1
-          echo "# Backend configuration for prod environment" > ${{ github.workspace }}/environment/prod/backend.hcl
-          echo "# Auto-generated bucket name: $BUCKET_NAME" >> ${{ github.workspace }}/environment/prod/backend.hcl
-          echo "bucket         = \"$BUCKET_NAME\"" >> ${{ github.workspace }}/environment/prod/backend.hcl
-          echo "dynamodb_table = \"prod-terraform-state-lock\"" >> ${{ github.workspace }}/environment/prod/backend.hcl
+          cat > ${{ github.workspace }}/environment/prod/backend.hcl <<EOF
+          # Backend configuration for prod environment
+          # Auto-generated bucket name: $BUCKET_NAME
+          bucket         = "$BUCKET_NAME"
+          dynamodb_table = "prod-terraform-state-lock"
+          EOF
       - name: Terraform Init
         run: terraform init -backend-config=${{ github.workspace }}/environment/prod/backend.hcl
       - name: Terraform Apply
