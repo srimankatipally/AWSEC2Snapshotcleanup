@@ -27,6 +27,105 @@ env:
   AWS_REGION: 'us-west-2'
 
 jobs:
+  terraform-backend-bootstrap-dev:
+    name: Bootstrap Backend (DEV)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./Layers/EC2CleanUp/base
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init (Backend)
+        run: terraform init
+
+      - name: Terraform Plan (Backend DEV)
+        run: |
+          terraform plan -no-color \
+            -var="environment=dev" \
+            -var="bucket_name=ec2-snapshot-cleanup" \
+            -var="dynamodb_table_name=terraform-state-lock" \
+            -var="aws_region=${{ env.AWS_REGION }}"
+
+      - name: Terraform Apply (Backend DEV)
+        run: |
+          terraform apply -auto-approve \
+            -var="environment=dev" \
+            -var="bucket_name=ec2-snapshot-cleanup" \
+            -var="dynamodb_table_name=terraform-state-lock" \
+            -var="aws_region=${{ env.AWS_REGION }}"
+        continue-on-error: true  # Allow failure if backend already exists
+
+      - name: Get Backend Output
+        id: backend-output
+        run: |
+          BUCKET_NAME=$(terraform output -raw s3_bucket_name 2>/dev/null || echo "")
+          if [ -n "$BUCKET_NAME" ]; then
+            echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
+            echo "✅ Backend bucket created: $BUCKET_NAME"
+          else
+            echo "⚠️  Could not retrieve bucket name"
+          fi
+
+  terraform-backend-bootstrap-prod:
+    name: Bootstrap Backend (PROD)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./Layers/EC2CleanUp/base
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init (Backend)
+        run: terraform init
+
+      - name: Terraform Plan (Backend PROD)
+        run: |
+          terraform plan -no-color \
+            -var="environment=prod" \
+            -var="bucket_name=ec2-snapshot-cleanup" \
+            -var="dynamodb_table_name=terraform-state-lock" \
+            -var="aws_region=${{ env.AWS_REGION }}"
+
+      - name: Terraform Apply (Backend PROD)
+        run: |
+          terraform apply -auto-approve \
+            -var="environment=prod" \
+            -var="bucket_name=ec2-snapshot-cleanup" \
+            -var="dynamodb_table_name=terraform-state-lock" \
+            -var="aws_region=${{ env.AWS_REGION }}"
+        continue-on-error: true  # Allow failure if backend already exists
+
   lambda-lint-test:
     name: Lambda Lint & Test
     runs-on: ubuntu-latest
@@ -97,7 +196,7 @@ jobs:
   terraform-plan-dev:
     name: Terraform Plan (DEV)
     runs-on: ubuntu-latest
-    needs: [lambda-lint-test, terraform-fmt-validate]
+    needs: [lambda-lint-test, terraform-fmt-validate, terraform-backend-bootstrap-dev]
     defaults:
       run:
         working-directory: ./Layers/EC2CleanUp/lambda
@@ -227,7 +326,7 @@ jobs:
   terraform-plan-prod:
     name: Terraform Plan (PROD)
     runs-on: ubuntu-latest
-    needs: terraform-apply-dev
+    needs: [terraform-apply-dev, terraform-backend-bootstrap-prod]
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     defaults:
       run:
