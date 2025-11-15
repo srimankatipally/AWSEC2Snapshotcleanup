@@ -70,15 +70,28 @@ jobs:
             -var="aws_region=${{ env.AWS_REGION }}"
         continue-on-error: true  # Allow failure if backend already exists
 
-      - name: Get Backend Output
-        id: backend-output
+      - name: Get Backend Output (DEV)
+        id: backend-output-dev
         run: |
+          # Try to get bucket name from terraform output
           BUCKET_NAME=$(terraform output -raw s3_bucket_name 2>/dev/null || echo "")
+          if [ -z "$BUCKET_NAME" ]; then
+            # If no output, try to read from backend.hcl or check AWS
+            echo "⚠️  Could not get bucket name from terraform output, checking backend.hcl..."
+            BUCKET_NAME=$(grep -E "^bucket\s*=" ${{ github.workspace }}/environment/dev/backend.hcl | sed -E 's/^[^"]*"([^"]+)".*/\1/' | head -1 || echo "")
+          fi
           if [ -n "$BUCKET_NAME" ]; then
             echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
-            echo "✅ Backend bucket created: $BUCKET_NAME"
+            echo "✅ Using backend bucket: $BUCKET_NAME"
+            # Update backend.hcl with the actual bucket name
+            BACKEND_HCL="${{ github.workspace }}/environment/dev/backend.hcl"
+            echo "# Backend configuration for dev environment" > "$BACKEND_HCL"
+            echo "# Auto-generated bucket name: $BUCKET_NAME" >> "$BACKEND_HCL"
+            echo "bucket         = \"$BUCKET_NAME\"" >> "$BACKEND_HCL"
+            echo "dynamodb_table = \"dev-terraform-state-lock\"" >> "$BACKEND_HCL"
+            echo "✅ Updated backend.hcl with bucket: $BUCKET_NAME"
           else
-            echo "⚠️  Could not retrieve bucket name"
+            echo "⚠️  Could not determine bucket name, terraform init may fail"
           fi
 
   terraform-backend-bootstrap-prod:
@@ -125,6 +138,30 @@ jobs:
             -var="dynamodb_table_name=terraform-state-lock" \
             -var="aws_region=${{ env.AWS_REGION }}"
         continue-on-error: true  # Allow failure if backend already exists
+
+      - name: Get Backend Output (PROD)
+        id: backend-output-prod
+        run: |
+          # Try to get bucket name from terraform output
+          BUCKET_NAME=$(terraform output -raw s3_bucket_name 2>/dev/null || echo "")
+          if [ -z "$BUCKET_NAME" ]; then
+            # If no output, try to read from backend.hcl or check AWS
+            echo "⚠️  Could not get bucket name from terraform output, checking backend.hcl..."
+            BUCKET_NAME=$(grep -E "^bucket\s*=" ${{ github.workspace }}/environment/prod/backend.hcl | sed -E 's/^[^"]*"([^"]+)".*/\1/' | head -1 || echo "")
+          fi
+          if [ -n "$BUCKET_NAME" ]; then
+            echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
+            echo "✅ Using backend bucket: $BUCKET_NAME"
+            # Update backend.hcl with the actual bucket name
+            BACKEND_HCL="${{ github.workspace }}/environment/prod/backend.hcl"
+            echo "# Backend configuration for prod environment" > "$BACKEND_HCL"
+            echo "# Auto-generated bucket name: $BUCKET_NAME" >> "$BACKEND_HCL"
+            echo "bucket         = \"$BUCKET_NAME\"" >> "$BACKEND_HCL"
+            echo "dynamodb_table = \"prod-terraform-state-lock\"" >> "$BACKEND_HCL"
+            echo "✅ Updated backend.hcl with bucket: $BUCKET_NAME"
+          else
+            echo "⚠️  Could not determine bucket name, terraform init may fail"
+          fi
 
   lambda-lint-test:
     name: Lambda Lint & Test
