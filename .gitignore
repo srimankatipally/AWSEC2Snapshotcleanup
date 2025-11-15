@@ -27,7 +27,9 @@ tfplan
 *.swp
 *.swo
 *~
-
+#Local scripts
+deploy-dev.sh
+destroy-dev.sh
 # OS
 .DS_Store
 Thumbs.db
@@ -35,7 +37,10 @@ Thumbs.db
 # Lambda deployment packages
 *.zip
 lambda_package.zip
-lambda/lambda_package.zip
+**/lambda_package.zip
+
+# Terraform output files
+environment/*/output.json
 
 # Logs
 *.log

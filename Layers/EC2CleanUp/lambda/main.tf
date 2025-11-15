@@ -184,8 +184,8 @@ resource "aws_cloudwatch_log_group" "lambda_logs" {
 # Archive Lambda function code
 data "archive_file" "lambda_zip" {
   type        = "zip"
-  source_file = "${path.module}/../lambda/lambda_function.py"
-  output_path = "${path.module}/../lambda/lambda_package.zip"
+  source_file = "${path.module}/code/lambda_function.py"
+  output_path = "${path.module}/lambda_package.zip"
 }
 
 # Lambda Function

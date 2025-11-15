@@ -238,9 +238,13 @@ This architecture consists of two infrastructure layers:
 
 Step 1: Bootstrap Backend (One-time per environment)
 ┌─────────────────────────────────────────┐
-│  cd backend/                               │
+│  cd Layers/EC2CleanUp/base                 │
 │  terraform init                            │
-│  terraform apply -var-file=env/dev.tfvars  │
+│  terraform apply \                         │
+│    -var="environment=dev" \                │
+│    -var="bucket_name=ec2-snapshot-cleanup" │
+│    -var="dynamodb_table_name=terraform-    │
+│      state-lock"                           │
 └─────────────────────────────────────────┘
        │
        ▼
@@ -254,11 +258,11 @@ Step 1: Bootstrap Backend (One-time per environment)
        ▼
 Step 2: Deploy Application Infrastructure
 ┌─────────────────────────────────────────┐
-│  cd terraform/                            │
+│  cd Layers/EC2CleanUp/lambda               │
 │  terraform init -backend-config=          │
-│    backend-dev.hcl                        │
+│    ../../environment/dev/backend.hcl      │
 │  terraform apply -var-file=               │
-│    ../env/dev/terraform.tfvars           │
+│    ../../environment/dev/terraform.tfvars │
 └─────────────────────────────────────────┘
        │
        ▼
@@ -310,35 +314,36 @@ Step 2: Deploy Application Infrastructure
 ## Project Structure
 
 ```
-AWS/
-├── backend/                    # Backend infrastructure (Terraform state)
-│   ├── env/                    # Environment-specific backend configs
-│   │   ├── dev.tfvars         # Dev backend: dev-ec2-snapshot-cleanup
-│   │   └── prod.tfvars        # Prod backend: prod-ec2-snapshot-cleanup
-│   ├── s3.tf                  # S3 bucket configuration
-│   ├── dynamodb.tf            # DynamoDB table configuration
-│   └── README.md              # Backend setup instructions
+AWSEC2Snapshotcleanup/
+├── Layers/EC2CleanUp/           # Shared/common resources
+│   ├── base/                    # Backend infrastructure (Terraform state)
+│   │   ├── s3.tf               # S3 bucket configuration
+│   │   ├── dynamodb.tf         # DynamoDB table configuration
+│   │   ├── provider.tf         # Provider configuration
+│   │   ├── versions.tf         # Terraform version requirements
+│   │   ├── variables.tf        # Variable definitions
+│   │   └── outputs.tf          # Output definitions
+│   └── lambda/                  # Lambda infrastructure + code
+│       ├── code/                # Lambda function code
+│       │   ├── lambda_function.py  # Python 3.11 snapshot cleanup
+│       │   └── requirements.txt    # Python dependencies
+│       ├── main.tf             # VPC, Lambda, VPC Endpoints, etc.
+│       ├── provider.tf         # Provider & backend configuration
+│       ├── versions.tf         # Terraform version requirements
+│       ├── variables.tf        # Variable definitions
+│       └── outputs.tf          # Output definitions
 │
-├── terraform/                  # Main application infrastructure
-│   ├── main.tf                # VPC, Lambda, VPC Endpoints, etc.
-│   ├── provider.tf            # Provider & backend configuration
-│   ├── backend-dev.hcl        # Backend config for dev
-│   ├── backend-prod.hcl       # Backend config for prod
-│   └── README.md              # Deployment instructions
-│
-├── env/                        # Environment-specific variables
+├── environment/                 # Environment-specific configurations
 │   ├── dev/
-│   │   └── terraform.tfvars   # Dev environment variables
+│   │   ├── backend.hcl         # Dev backend config (dev-ec2-snapshot-cleanup)
+│   │   └── terraform.tfvars    # Dev environment variables
 │   └── prod/
-│       └── terraform.tfvars   # Prod environment variables
+│       ├── backend.hcl         # Prod backend config (prod-ec2-snapshot-cleanup)
+│       └── terraform.tfvars    # Prod environment variables
 │
-├── lambda/                     # Lambda function code
-│   ├── lambda_function.py     # Python 3.11 snapshot cleanup
-│   └── requirements.txt       # Python dependencies
-│
-└── .github/workflows/          # CI/CD workflows
-    ├── terraform.yml          # Terraform validation & deployment
-    └── lambda-test.yml       # Lambda code validation
+└── .github/workflows/           # CI/CD workflows
+    ├── terraform.yml           # Terraform validation & deployment (dev→prod)
+    └── lambda-test.yml         # Lambda code validation
 ```
 
 ## Environment Management

@@ -3,6 +3,11 @@ output "s3_bucket_name" {
   value       = aws_s3_bucket.terraform_state.id
 }
 
+output "bucket_suffix" {
+  description = "Random suffix used in bucket name for uniqueness"
+  value       = random_id.bucket_suffix.hex
+}
+
 output "environment" {
   description = "Environment name"
   value       = var.environment

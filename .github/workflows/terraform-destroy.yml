@@ -3,27 +3,34 @@ name: Terraform Destroy
 on:
   workflow_dispatch:
     inputs:
+      environment:
+        description: 'Environment to destroy (dev or prod)'
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
       confirm_destroy:
-        description: 'Type "DESTROY" to confirm destruction of all infrastructure'
+        description: 'Type "DESTROY" to confirm destruction of infrastructure'
         required: true
         type: string
       aws_region:
         description: 'AWS Region'
         required: false
-        default: 'us-east-1'
+        default: 'us-west-2'
         type: string
 
 env:
   TF_VERSION: '1.6.0'
-  AWS_REGION: ${{ inputs.aws_region || 'us-east-1' }}
+  AWS_REGION: ${{ inputs.aws_region || 'us-west-2' }}
 
 jobs:
   terraform-destroy:
-    name: Terraform Destroy
+    name: Terraform Destroy (${{ inputs.environment }})
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./terraform
+        working-directory: ./Layers/EC2CleanUp/lambda
 
     steps:
       - name: Checkout code
@@ -35,7 +42,7 @@ jobs:
             echo "❌ Destruction cancelled. You must type 'DESTROY' to confirm."
             exit 1
           fi
-          echo "✅ Confirmation validated. Proceeding with destruction..."
+          echo "✅ Confirmation validated. Proceeding with destruction of ${{ inputs.environment }} environment..."
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -51,24 +58,17 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Init
-        run: terraform init
+        run: terraform init -backend-config=../../environment/${{ inputs.environment }}/backend.hcl
 
       - name: Terraform Plan (Destroy)
         id: plan-destroy
         run: |
-          # Use terraform.tfvars if it exists, otherwise use inline vars
-          if [ -f terraform.tfvars ]; then
-            terraform plan -destroy -no-color -var-file=terraform.tfvars > destroy_plan.txt 2>&1
-          else
-            terraform plan -destroy -no-color \
-              -var="aws_region=${{ env.AWS_REGION }}" \
-              -var="environment=ci" > destroy_plan.txt 2>&1
-          fi
+          terraform plan -destroy -no-color -var-file=../../environment/${{ inputs.environment }}/terraform.tfvars > destroy_plan.txt 2>&1
         continue-on-error: true
 
       - name: Show Destroy Plan
         run: |
-          echo "📋 Resources that will be destroyed:"
+          echo "📋 Resources that will be destroyed in ${{ inputs.environment }} environment:"
           echo "=================================="
           cat destroy_plan.txt
           echo "=================================="
@@ -81,7 +81,7 @@ jobs:
 
       - name: Terraform Destroy
         run: |
-          echo "🔥 Starting infrastructure destruction..."
+          echo "🔥 Starting infrastructure destruction for ${{ inputs.environment }} environment..."
           echo "⚠️  This will destroy ALL resources including:"
           echo "   - Lambda Function"
           echo "   - EventBridge Rules"
@@ -94,17 +94,12 @@ jobs:
           echo ""
           echo "⏳ Destroying infrastructure..."
           
-          # Use terraform.tfvars if it exists, otherwise use inline vars
-          if [ -f terraform.tfvars ]; then
-            terraform destroy -auto-approve -var-file=terraform.tfvars
-          else
-            terraform destroy -auto-approve \
-              -var="aws_region=${{ env.AWS_REGION }}" \
-              -var="environment=ci"
-          fi
+          terraform destroy -auto-approve -var-file=../../environment/${{ inputs.environment }}/terraform.tfvars
 
       - name: Destroy Summary
         if: always()
         run: |
-          echo "✅ Infrastructure destruction completed successfully"
-
+          echo "✅ Infrastructure destruction for ${{ inputs.environment }} environment completed successfully"
+          echo ""
+          echo "ℹ️  Note: Backend resources (S3 bucket and DynamoDB table) are preserved."
+          echo "   To destroy backend resources, uncomment the backend destruction job in the workflow."

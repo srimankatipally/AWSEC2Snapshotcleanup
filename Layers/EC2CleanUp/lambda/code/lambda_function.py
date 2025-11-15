@@ -14,7 +14,7 @@ ec2_client = boto3.client('ec2')
 RETENTION_DAYS = int(os.environ.get('RETENTION_DAYS', 365))
 EXCLUDE_TAG_KEY = os.environ.get('EXCLUDE_TAG_KEY', '')
 EXCLUDE_TAG_VALUE = os.environ.get('EXCLUDE_TAG_VALUE', '')
-AWS_REGION = os.environ.get('AWS_REGION', 'us-east-1')
+AWS_REGION = os.environ.get('AWS_REGION', 'us-west-2')
 
 
 def is_snapshot_old(snapshot_start_time):

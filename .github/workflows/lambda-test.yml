@@ -6,14 +6,14 @@ on:
       - main
       - master
     paths:
-      - 'lambda/**'
+      - 'Layers/EC2CleanUp/lambda/code/**'
       - '.github/workflows/lambda-test.yml'
   pull_request:
     branches:
       - main
       - master
     paths:
-      - 'lambda/**'
+      - 'Layers/EC2CleanUp/lambda/code/**'
       - '.github/workflows/lambda-test.yml'
 
 jobs:
@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./lambda
+        working-directory: ./Layers/EC2CleanUp/lambda/code
 
     steps:
       - name: Checkout code
@@ -53,7 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./lambda
+        working-directory: ./Layers/EC2CleanUp/lambda/code
 
     steps:
       - name: Checkout code
@@ -66,4 +66,3 @@ jobs:
 
       - name: Python Syntax Check
         run: python -m py_compile lambda_function.py
-

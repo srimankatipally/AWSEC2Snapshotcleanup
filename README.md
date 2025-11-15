@@ -37,9 +37,9 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture documentation.
 
 **Check Permissions:**
 ```bash
-cd terraform
-terraform init
-terraform plan  # Shows any permission errors
+cd Layers/EC2CleanUp/lambda
+terraform init -backend-config=../../environment/dev/backend.hcl
+terraform plan -var-file=../../environment/dev/terraform.tfvars  # Shows any permission errors
 ```
 
 ## Quick Start
@@ -47,17 +47,21 @@ terraform plan  # Shows any permission errors
 ### 1. Bootstrap Backend
 
 ```bash
-cd backend
+cd Layers/EC2CleanUp/base
 terraform init
-terraform apply -var-file=env/dev.tfvars  # For dev environment
+terraform apply \
+  -var="environment=dev" \
+  -var="bucket_name=ec2-snapshot-cleanup" \
+  -var="dynamodb_table_name=terraform-state-lock" \
+  -var="aws_region=us-west-2"
 ```
 
 ### 2. Deploy Infrastructure
 
 ```bash
-cd terraform
-terraform init -backend-config=backend-dev.hcl
-terraform apply -var-file=../env/dev/terraform.tfvars
+cd Layers/EC2CleanUp/lambda
+terraform init -backend-config=../../environment/dev/backend.hcl
+terraform apply -var-file=../../environment/dev/terraform.tfvars
 ```
 
 
@@ -195,7 +199,7 @@ fields @timestamp, @message
 ```bash
 aws lambda invoke \
   --function-name ec2-snapshot-cleanup \
-  --region us-east-1 \
+  --region us-west-2 \
   response.json
 ```
 
@@ -207,7 +211,7 @@ aws lambda invoke \
 
 ### Lambda Function Timing Out
 
-Increase timeout in `terraform/main.tf`:
+Increase timeout in `Layers/EC2CleanUp/lambda/main.tf`:
 ```hcl
 timeout = 600  # 10 minutes
 ```
@@ -215,20 +219,32 @@ timeout = 600  # 10 minutes
 ## Project Structure
 
 ```
-AWS/
-├── backend/              # Backend infrastructure (S3 + DynamoDB)
-│   ├── env/              # Environment-specific backend configs
-│   └── README.md
-├── terraform/            # Main infrastructure
-│   ├── env/              # Environment-specific configs
-│   └── README.md
-├── lambda/               # Lambda function code
-│   ├── lambda_function.py
-│   └── requirements.txt
-├── env/                  # Environment tfvars
+AWSEC2Snapshotcleanup/
+├── Layers/EC2CleanUp/           # Shared/common resources
+│   ├── base/                    # Backend infrastructure (S3 + DynamoDB)
+│   │   ├── s3.tf
+│   │   ├── dynamodb.tf
+│   │   ├── provider.tf
+│   │   ├── versions.tf
+│   │   ├── variables.tf
+│   │   └── outputs.tf
+│   └── lambda/                  # Lambda infrastructure + code
+│       ├── code/                # Lambda function code
+│       │   ├── lambda_function.py
+│       │   └── requirements.txt
+│       ├── main.tf              # Infrastructure modules
+│       ├── provider.tf
+│       ├── versions.tf
+│       ├── variables.tf
+│       └── outputs.tf
+├── environment/                 # Environment-specific configs
 │   ├── dev/
+│   │   ├── backend.hcl         # Dev backend config
+│   │   └── terraform.tfvars    # Dev variables
 │   └── prod/
-└── .github/workflows/    # CI/CD workflows
+│       ├── backend.hcl         # Prod backend config
+│       └── terraform.tfvars    # Prod variables
+└── .github/workflows/           # CI/CD workflows
 ```
 
 ## Environment Management

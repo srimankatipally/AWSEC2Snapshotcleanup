@@ -1,10 +1,11 @@
 # S3 Bucket for Terraform State Storage
+# Using random suffix to ensure unique bucket name (S3 bucket names are globally unique)
 resource "aws_s3_bucket" "terraform_state" {
-  bucket = "${var.environment}-${var.bucket_name}"
+  bucket = "${var.environment}-${var.bucket_name}-${random_id.bucket_suffix.hex}"
 
   tags = merge(
     {
-      Name        = "${var.environment}-${var.bucket_name}"
+      Name        = "${var.environment}-${var.bucket_name}-${random_id.bucket_suffix.hex}"
       Environment = var.environment
       Purpose     = "Terraform State Storage"
       ManagedBy   = "Terraform"
@@ -50,6 +51,9 @@ resource "aws_s3_bucket_lifecycle_configuration" "terraform_state" {
   rule {
     id     = "cleanup-old-versions"
     status = "Enabled"
+
+    # Apply to all objects in the bucket
+    filter {}
 
     noncurrent_version_expiration {
       noncurrent_days = 90

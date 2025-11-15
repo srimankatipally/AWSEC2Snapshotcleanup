@@ -6,8 +6,9 @@ on:
       - main
       - master
     paths:
-      - 'terraform/**'
-      - 'lambda/**'
+      - 'Layers/EC2CleanUp/base/**'
+      - 'Layers/EC2CleanUp/lambda/**'
+      - 'environment/**'
       - '.github/workflows/terraform.yml'
   pull_request:
     branches:
@@ -16,21 +17,56 @@ on:
       - develop
       - dev
     paths:
-      - 'terraform/**'
-      - 'lambda/**'
+      - 'Layers/EC2CleanUp/base/**'
+      - 'Layers/EC2CleanUp/lambda/**'
+      - 'environment/**'
       - '.github/workflows/terraform.yml'
 
 env:
   TF_VERSION: '1.6.0'
-  AWS_REGION: 'us-east-1'
+  AWS_REGION: 'us-west-2'
 
 jobs:
-  terraform-validate:
-    name: Terraform Validate
+  lambda-lint-test:
+    name: Lambda Lint & Test
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./terraform
+        working-directory: ./Layers/EC2CleanUp/lambda/code
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install flake8 pylint boto3-stubs[essential]
+
+      - name: Lint with flake8
+        run: |
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Lint with pylint
+        run: |
+          pylint lambda_function.py --disable=C0103,C0111 || true
+
+      - name: Python Syntax Check
+        run: python -m py_compile lambda_function.py
+
+  terraform-fmt-validate:
+    name: Terraform Format & Validate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./Layers/EC2CleanUp/lambda
 
     steps:
       - name: Checkout code
@@ -55,16 +91,16 @@ jobs:
       - name: Terraform Security Scan
         uses: aquasecurity/tfsec-action@v1.0.0
         with:
-          working_directory: terraform
+          working_directory: Layers/EC2CleanUp/lambda
         continue-on-error: true
 
-  terraform-plan:
-    name: Terraform Plan
+  terraform-plan-dev:
+    name: Terraform Plan (DEV)
     runs-on: ubuntu-latest
-    needs: terraform-validate
+    needs: [lambda-lint-test, terraform-fmt-validate]
     defaults:
       run:
-        working-directory: ./terraform
+        working-directory: ./Layers/EC2CleanUp/lambda
 
     steps:
       - name: Checkout code
@@ -83,27 +119,20 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Terraform Init
-        run: terraform init
+      - name: Terraform Init (DEV)
+        run: terraform init -backend-config=../../environment/dev/backend.hcl
 
-      - name: Terraform Plan
-        id: plan
+      - name: Terraform Plan (DEV)
+        id: plan-dev
         run: |
-          # Use terraform.tfvars if it exists, otherwise use inline vars
-          if [ -f terraform.tfvars ]; then
-            terraform plan -no-color -out=tfplan -var-file=terraform.tfvars > plan_output.txt 2>&1
-          else
-            terraform plan -no-color -out=tfplan \
-              -var="aws_region=${{ env.AWS_REGION }}" \
-              -var="environment=ci" > plan_output.txt 2>&1
-          fi
+          terraform plan -no-color -out=tfplan-dev -var-file=../../environment/dev/terraform.tfvars > plan_output_dev.txt 2>&1
         continue-on-error: true
 
-      - name: Terraform Plan Status
-        if: steps.plan.outcome == 'failure'
+      - name: Terraform Plan Status (DEV)
+        if: steps.plan-dev.outcome == 'failure'
         run: exit 1
 
-      - name: Comment PR with Plan
+      - name: Comment PR with Plan (DEV)
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
@@ -112,17 +141,17 @@ jobs:
             const fs = require('fs');
             let planOutput = '';
             try {
-              planOutput = fs.readFileSync('plan_output.txt', 'utf8');
+              planOutput = fs.readFileSync('plan_output_dev.txt', 'utf8');
             } catch (error) {
               planOutput = 'Plan output could not be captured. Check workflow logs for details.';
             }
             
-            const output = `#### Terraform Plan 📖
+            const output = `#### Terraform Plan (DEV) 📖
             \`\`\`
-            ${planOutput.substring(0, 60000)}  # GitHub comment limit
+            ${planOutput.substring(0, 60000)}
             \`\`\`
 
-            *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`terraform\`, Workflow: \`${{ github.workflow }}\`*`;
+            *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Environment: \`dev\`, Workflow: \`${{ github.workflow }}\`*`;
 
             github.rest.issues.createComment({
               issue_number: context.issue.number,
@@ -131,14 +160,14 @@ jobs:
               body: output
             })
 
-  terraform-apply:
-    name: Terraform Apply
+  terraform-apply-dev:
+    name: Terraform Apply (DEV)
     runs-on: ubuntu-latest
-    needs: terraform-plan
+    needs: terraform-plan-dev
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     defaults:
       run:
-        working-directory: ./terraform
+        working-directory: ./Layers/EC2CleanUp/lambda
 
     steps:
       - name: Checkout code
@@ -157,30 +186,133 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Terraform Init
-        run: terraform init
+      - name: Terraform Init (DEV)
+        run: terraform init -backend-config=../../environment/dev/backend.hcl
 
-      - name: Terraform Apply
-        run: |
-          # Use terraform.tfvars if it exists, otherwise use inline vars
-          if [ -f terraform.tfvars ]; then
-            terraform apply -auto-approve -var-file=terraform.tfvars
-          else
-            terraform apply -auto-approve \
-              -var="aws_region=${{ env.AWS_REGION }}" \
-              -var="environment=ci"
-          fi
+      - name: Terraform Apply (DEV)
+        run: terraform apply -auto-approve -var-file=../../environment/dev/terraform.tfvars
 
-      - name: Terraform Output
-        id: output
-        run: terraform output -json > output.json
+      - name: Terraform Output (DEV)
+        id: output-dev
+        run: terraform output -json > ../../environment/dev/output.json
         continue-on-error: true
 
-      - name: Upload Terraform Output
+      - name: Upload Terraform Output (DEV)
         uses: actions/upload-artifact@v4
-        if: steps.output.outcome == 'success'
+        if: steps.output-dev.outcome == 'success'
         with:
-          name: terraform-output
-          path: terraform/output.json
+          name: terraform-output-dev
+          path: environment/dev/output.json
           retention-days: 7
 
+  terraform-plan-prod:
+    name: Terraform Plan (PROD)
+    runs-on: ubuntu-latest
+    needs: terraform-apply-dev
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    defaults:
+      run:
+        working-directory: ./Layers/EC2CleanUp/lambda
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init (PROD)
+        run: terraform init -backend-config=../../environment/prod/backend.hcl
+
+      - name: Terraform Plan (PROD)
+        id: plan-prod
+        run: |
+          terraform plan -no-color -out=tfplan-prod -var-file=../../environment/prod/terraform.tfvars > plan_output_prod.txt 2>&1
+        continue-on-error: true
+
+      - name: Terraform Plan Status (PROD)
+        if: steps.plan-prod.outcome == 'failure'
+        run: exit 1
+
+      - name: Comment PR with Plan (PROD)
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            let planOutput = '';
+            try {
+              planOutput = fs.readFileSync('plan_output_prod.txt', 'utf8');
+            } catch (error) {
+              planOutput = 'Plan output could not be captured. Check workflow logs for details.';
+            }
+            
+            const output = `#### Terraform Plan (PROD) 📖
+            \`\`\`
+            ${planOutput.substring(0, 60000)}
+            \`\`\`
+
+            *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Environment: \`prod\`, Workflow: \`${{ github.workflow }}\`*`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+
+  terraform-apply-prod:
+    name: Terraform Apply (PROD)
+    runs-on: ubuntu-latest
+    needs: terraform-plan-prod
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    defaults:
+      run:
+        working-directory: ./Layers/EC2CleanUp/lambda
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init (PROD)
+        run: terraform init -backend-config=../../environment/prod/backend.hcl
+
+      - name: Terraform Apply (PROD)
+        run: terraform apply -auto-approve -var-file=../../environment/prod/terraform.tfvars
+
+      - name: Terraform Output (PROD)
+        id: output-prod
+        run: terraform output -json > ../../environment/prod/output.json
+        continue-on-error: true
+
+      - name: Upload Terraform Output (PROD)
+        uses: actions/upload-artifact@v4
+        if: steps.output-prod.outcome == 'success'
+        with:
+          name: terraform-output-prod
+          path: environment/prod/output.json
+          retention-days: 7
