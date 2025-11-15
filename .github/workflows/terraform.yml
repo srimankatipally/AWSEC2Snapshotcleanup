@@ -27,141 +27,38 @@ env:
   AWS_REGION: 'us-west-2'
 
 jobs:
-  terraform-backend-bootstrap-dev:
-    name: Bootstrap Backend (DEV)
+  terraform-backend-bootstrap:
+    name: Bootstrap Backend (${{ matrix.environment }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [dev]
+        include:
+          - environment: prod
     defaults:
       run:
         working-directory: ./Layers/EC2CleanUp/base
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
-
-      - name: Terraform Init (Backend)
+      - name: Terraform Init
         run: terraform init
-
-      - name: Terraform Plan (Backend DEV)
+      - name: Terraform Apply
+        run: terraform apply -auto-approve -var="environment=${{ matrix.environment }}" -var="bucket_name=ec2-snapshot-cleanup" -var="dynamodb_table_name=terraform-state-lock" -var="aws_region=${{ env.AWS_REGION }}"
+        continue-on-error: true
+      - name: Get Backend Output
         run: |
-          terraform plan -no-color \
-            -var="environment=dev" \
-            -var="bucket_name=ec2-snapshot-cleanup" \
-            -var="dynamodb_table_name=terraform-state-lock" \
-            -var="aws_region=${{ env.AWS_REGION }}"
-
-      - name: Terraform Apply (Backend DEV)
-        run: |
-          terraform apply -auto-approve \
-            -var="environment=dev" \
-            -var="bucket_name=ec2-snapshot-cleanup" \
-            -var="dynamodb_table_name=terraform-state-lock" \
-            -var="aws_region=${{ env.AWS_REGION }}"
-        continue-on-error: true  # Allow failure if backend already exists
-
-      - name: Get Backend Output (DEV)
-        id: backend-output-dev
-        run: |
-          # Try to get bucket name from terraform output
-          BUCKET_NAME=$(terraform output -raw s3_bucket_name 2>/dev/null || echo "")
-          if [ -z "$BUCKET_NAME" ]; then
-            # If no output, try to read from backend.hcl or check AWS
-            echo "⚠️  Could not get bucket name from terraform output, checking backend.hcl..."
-            BUCKET_NAME=$(grep -E "^bucket\s*=" ${{ github.workspace }}/environment/dev/backend.hcl | sed -E 's/^[^"]*"([^"]+)".*/\1/' | head -1 || echo "")
-          fi
-          if [ -n "$BUCKET_NAME" ]; then
-            echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
-            echo "✅ Using backend bucket: $BUCKET_NAME"
-            # Update backend.hcl with the actual bucket name
-            BACKEND_HCL="${{ github.workspace }}/environment/dev/backend.hcl"
-            echo "# Backend configuration for dev environment" > "$BACKEND_HCL"
-            echo "# Auto-generated bucket name: $BUCKET_NAME" >> "$BACKEND_HCL"
-            echo "bucket         = \"$BUCKET_NAME\"" >> "$BACKEND_HCL"
-            echo "dynamodb_table = \"dev-terraform-state-lock\"" >> "$BACKEND_HCL"
-            echo "✅ Updated backend.hcl with bucket: $BUCKET_NAME"
-          else
-            echo "⚠️  Could not determine bucket name, terraform init may fail"
-          fi
-
-  terraform-backend-bootstrap-prod:
-    name: Bootstrap Backend (PROD)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./Layers/EC2CleanUp/base
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Terraform Init (Backend)
-        run: terraform init
-
-      - name: Terraform Plan (Backend PROD)
-        run: |
-          terraform plan -no-color \
-            -var="environment=prod" \
-            -var="bucket_name=ec2-snapshot-cleanup" \
-            -var="dynamodb_table_name=terraform-state-lock" \
-            -var="aws_region=${{ env.AWS_REGION }}"
-
-      - name: Terraform Apply (Backend PROD)
-        run: |
-          terraform apply -auto-approve \
-            -var="environment=prod" \
-            -var="bucket_name=ec2-snapshot-cleanup" \
-            -var="dynamodb_table_name=terraform-state-lock" \
-            -var="aws_region=${{ env.AWS_REGION }}"
-        continue-on-error: true  # Allow failure if backend already exists
-
-      - name: Get Backend Output (PROD)
-        id: backend-output-prod
-        run: |
-          # Try to get bucket name from terraform output
-          BUCKET_NAME=$(terraform output -raw s3_bucket_name 2>/dev/null || echo "")
-          if [ -z "$BUCKET_NAME" ]; then
-            # If no output, try to read from backend.hcl or check AWS
-            echo "⚠️  Could not get bucket name from terraform output, checking backend.hcl..."
-            BUCKET_NAME=$(grep -E "^bucket\s*=" ${{ github.workspace }}/environment/prod/backend.hcl | sed -E 's/^[^"]*"([^"]+)".*/\1/' | head -1 || echo "")
-          fi
-          if [ -n "$BUCKET_NAME" ]; then
-            echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
-            echo "✅ Using backend bucket: $BUCKET_NAME"
-            # Update backend.hcl with the actual bucket name
-            BACKEND_HCL="${{ github.workspace }}/environment/prod/backend.hcl"
-            echo "# Backend configuration for prod environment" > "$BACKEND_HCL"
-            echo "# Auto-generated bucket name: $BUCKET_NAME" >> "$BACKEND_HCL"
-            echo "bucket         = \"$BUCKET_NAME\"" >> "$BACKEND_HCL"
-            echo "dynamodb_table = \"prod-terraform-state-lock\"" >> "$BACKEND_HCL"
-            echo "✅ Updated backend.hcl with bucket: $BUCKET_NAME"
-          else
-            echo "⚠️  Could not determine bucket name, terraform init may fail"
-          fi
+          BUCKET_NAME=$(terraform output -raw s3_bucket_name 2>/dev/null || grep -E "^bucket\s*=" ${{ github.workspace }}/environment/${{ matrix.environment }}/backend.hcl | sed -E 's/^[^"]*"([^"]+)".*/\1/' | head -1 || echo "")
+          [ -n "$BUCKET_NAME" ] && echo "✅ Backend bucket: $BUCKET_NAME" || true
 
   lambda-lint-test:
     name: Lambda Lint & Test
@@ -233,87 +130,96 @@ jobs:
   terraform-plan-dev:
     name: Terraform Plan (DEV)
     runs-on: ubuntu-latest
-    needs: [lambda-lint-test, terraform-fmt-validate, terraform-backend-bootstrap-dev]
+    needs:
+      - lambda-lint-test
+      - terraform-fmt-validate
+      - terraform-backend-bootstrap
     defaults:
       run:
         working-directory: ./Layers/EC2CleanUp/lambda
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
-
-      - name: Verify environment files exist (DEV)
+      - name: Setup Backend Config
         run: |
-          echo "Workspace: ${{ github.workspace }}"
-          echo "Working directory: $(pwd)"
-          echo "Checking for backend.hcl..."
-          ls -la ${{ github.workspace }}/environment/dev/backend.hcl || echo "❌ backend.hcl not found"
-          echo "Checking for terraform.tfvars..."
-          ls -la ${{ github.workspace }}/environment/dev/terraform.tfvars || echo "❌ terraform.tfvars not found"
-          echo "Listing environment/dev directory:"
-          ls -la ${{ github.workspace }}/environment/dev/ || echo "❌ environment/dev directory not found"
-
-      - name: Terraform Init (DEV)
+          BUCKET_NAME=$(aws s3api list-buckets --query "Buckets[?starts_with(Name, 'dev-ec2-snapshot-cleanup')].Name" --output text 2>/dev/null | head -1 || grep -E "^bucket\s*=" ${{ github.workspace }}/environment/dev/backend.hcl | sed -E 's/^[^"]*"([^"]+)".*/\1/' | head -1 || echo "")
+          [ -z "$BUCKET_NAME" ] && echo "❌ Could not find backend bucket" && exit 1
+          echo "# Backend configuration for dev environment" > ${{ github.workspace }}/environment/dev/backend.hcl
+          echo "# Auto-generated bucket name: $BUCKET_NAME" >> ${{ github.workspace }}/environment/dev/backend.hcl
+          echo "bucket         = \"$BUCKET_NAME\"" >> ${{ github.workspace }}/environment/dev/backend.hcl
+          echo "dynamodb_table = \"dev-terraform-state-lock\"" >> ${{ github.workspace }}/environment/dev/backend.hcl
+      - name: Terraform Init
         run: terraform init -backend-config=${{ github.workspace }}/environment/dev/backend.hcl
-
-      - name: Terraform Plan (DEV)
-        id: plan-dev
-        run: |
-          terraform plan -no-color -out=tfplan-dev -var-file=${{ github.workspace }}/environment/dev/terraform.tfvars > plan_output_dev.txt 2>&1
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -no-color -out=tfplan-dev -var-file=${{ github.workspace }}/environment/dev/terraform.tfvars > plan_output_dev.txt 2>&1
         continue-on-error: true
-
-      - name: Show Plan Output (DEV)
-        if: steps.plan-dev.outcome == 'failure'
-        run: |
-          echo "❌ Terraform Plan failed. Output:"
-          echo "=================================="
-          cat plan_output_dev.txt
-          echo "=================================="
-
-      - name: Terraform Plan Status (DEV)
-        if: steps.plan-dev.outcome == 'failure'
-        run: exit 1
-
-      - name: Comment PR with Plan (DEV)
+      - name: Show Plan Output
+        if: steps.plan.outcome == 'failure'
+        run: echo "❌ Terraform Plan failed:" && cat plan_output_dev.txt && exit 1
+      - name: Comment PR with Plan
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
-            let planOutput = '';
-            try {
-              planOutput = fs.readFileSync('plan_output_dev.txt', 'utf8');
-            } catch (error) {
-              planOutput = 'Plan output could not be captured. Check workflow logs for details.';
-            }
-            
-            const output = `#### Terraform Plan (DEV) 📖
-            \`\`\`
-            ${planOutput.substring(0, 60000)}
-            \`\`\`
+            const planOutput = fs.existsSync('plan_output_dev.txt') ? fs.readFileSync('plan_output_dev.txt', 'utf8').substring(0, 60000) : 'Plan output could not be captured.';
+            github.rest.issues.createComment({ issue_number: context.issue.number, owner: context.repo.owner, repo: context.repo.repo, body: `#### Terraform Plan (DEV) 📖\n\`\`\`\n${planOutput}\n\`\`\`\n*Environment: \`dev\`*` });
 
-            *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Environment: \`dev\`, Workflow: \`${{ github.workflow }}\`*`;
-
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: output
-            })
+  terraform-plan-prod:
+    name: Terraform Plan (PROD)
+    runs-on: ubuntu-latest
+    needs: [terraform-apply-dev, terraform-backend-bootstrap]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    defaults:
+      run:
+        working-directory: ./Layers/EC2CleanUp/lambda
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Setup Backend Config
+        run: |
+          BUCKET_NAME=$(aws s3api list-buckets --query "Buckets[?starts_with(Name, 'prod-ec2-snapshot-cleanup')].Name" --output text 2>/dev/null | head -1 || grep -E "^bucket\s*=" ${{ github.workspace }}/environment/prod/backend.hcl | sed -E 's/^[^"]*"([^"]+)".*/\1/' | head -1 || echo "")
+          [ -z "$BUCKET_NAME" ] && echo "❌ Could not find backend bucket" && exit 1
+          echo "# Backend configuration for prod environment" > ${{ github.workspace }}/environment/prod/backend.hcl
+          echo "# Auto-generated bucket name: $BUCKET_NAME" >> ${{ github.workspace }}/environment/prod/backend.hcl
+          echo "bucket         = \"$BUCKET_NAME\"" >> ${{ github.workspace }}/environment/prod/backend.hcl
+          echo "dynamodb_table = \"prod-terraform-state-lock\"" >> ${{ github.workspace }}/environment/prod/backend.hcl
+      - name: Terraform Init
+        run: terraform init -backend-config=${{ github.workspace }}/environment/prod/backend.hcl
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -no-color -out=tfplan-prod -var-file=${{ github.workspace }}/environment/prod/terraform.tfvars > plan_output_prod.txt 2>&1
+        continue-on-error: true
+      - name: Show Plan Output
+        if: steps.plan.outcome == 'failure'
+        run: echo "❌ Terraform Plan failed:" && cat plan_output_prod.txt
+      - name: Comment PR with Plan
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const planOutput = fs.existsSync('plan_output_prod.txt') ? fs.readFileSync('plan_output_prod.txt', 'utf8').substring(0, 60000) : 'Plan output could not be captured.';
+            github.rest.issues.createComment({ issue_number: context.issue.number, owner: context.repo.owner, repo: context.repo.repo, body: `#### Terraform Plan (PROD) 📖\n\`\`\`\n${planOutput}\n\`\`\`\n*Environment: \`prod\`*` })
 
   terraform-apply-dev:
     name: Terraform Apply (DEV)
@@ -323,128 +229,39 @@ jobs:
     defaults:
       run:
         working-directory: ./Layers/EC2CleanUp/lambda
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
-
-      - name: Terraform Init (DEV)
+      - name: Setup Backend Config
+        run: |
+          BUCKET_NAME=$(aws s3api list-buckets --query "Buckets[?starts_with(Name, 'dev-ec2-snapshot-cleanup')].Name" --output text 2>/dev/null | head -1 || grep -E "^bucket\s*=" ${{ github.workspace }}/environment/dev/backend.hcl | sed -E 's/^[^"]*"([^"]+)".*/\1/' | head -1 || echo "")
+          [ -z "$BUCKET_NAME" ] && echo "❌ Could not find backend bucket" && exit 1
+          echo "# Backend configuration for dev environment" > ${{ github.workspace }}/environment/dev/backend.hcl
+          echo "# Auto-generated bucket name: $BUCKET_NAME" >> ${{ github.workspace }}/environment/dev/backend.hcl
+          echo "bucket         = \"$BUCKET_NAME\"" >> ${{ github.workspace }}/environment/dev/backend.hcl
+          echo "dynamodb_table = \"dev-terraform-state-lock\"" >> ${{ github.workspace }}/environment/dev/backend.hcl
+      - name: Terraform Init
         run: terraform init -backend-config=${{ github.workspace }}/environment/dev/backend.hcl
-
-      - name: Terraform Apply (DEV)
+      - name: Terraform Apply
         run: terraform apply -auto-approve -var-file=${{ github.workspace }}/environment/dev/terraform.tfvars
-
-      - name: Terraform Output (DEV)
-        id: output-dev
+      - name: Terraform Output
         run: terraform output -json > ${{ github.workspace }}/environment/dev/output.json
         continue-on-error: true
-
-      - name: Upload Terraform Output (DEV)
+      - name: Upload Terraform Output
         uses: actions/upload-artifact@v4
-        if: steps.output-dev.outcome == 'success'
         with:
           name: terraform-output-dev
           path: environment/dev/output.json
           retention-days: 7
-
-  terraform-plan-prod:
-    name: Terraform Plan (PROD)
-    runs-on: ubuntu-latest
-    needs: [terraform-apply-dev, terraform-backend-bootstrap-prod]
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-    defaults:
-      run:
-        working-directory: ./Layers/EC2CleanUp/lambda
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Verify environment files exist (PROD)
-        run: |
-          echo "Workspace: ${{ github.workspace }}"
-          echo "Working directory: $(pwd)"
-          echo "Checking for backend.hcl..."
-          ls -la ${{ github.workspace }}/environment/prod/backend.hcl || echo "❌ backend.hcl not found"
-          echo "Checking for terraform.tfvars..."
-          ls -la ${{ github.workspace }}/environment/prod/terraform.tfvars || echo "❌ terraform.tfvars not found"
-          echo "Listing environment/prod directory:"
-          ls -la ${{ github.workspace }}/environment/prod/ || echo "❌ environment/prod directory not found"
-
-      - name: Terraform Init (PROD)
-        run: terraform init -backend-config=${{ github.workspace }}/environment/prod/backend.hcl
-
-      - name: Terraform Plan (PROD)
-        id: plan-prod
-        run: |
-          terraform plan -no-color -out=tfplan-prod -var-file=${{ github.workspace }}/environment/prod/terraform.tfvars > plan_output_prod.txt 2>&1
         continue-on-error: true
-
-      - name: Show Plan Output (PROD)
-        if: steps.plan-prod.outcome == 'failure'
-        run: |
-          echo "❌ Terraform Plan failed. Output:"
-          echo "=================================="
-          cat plan_output_prod.txt
-          echo "=================================="
-
-      - name: Terraform Plan Status (PROD)
-        if: steps.plan-prod.outcome == 'failure'
-        run: exit 1
-
-      - name: Comment PR with Plan (PROD)
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const fs = require('fs');
-            let planOutput = '';
-            try {
-              planOutput = fs.readFileSync('plan_output_prod.txt', 'utf8');
-            } catch (error) {
-              planOutput = 'Plan output could not be captured. Check workflow logs for details.';
-            }
-            
-            const output = `#### Terraform Plan (PROD) 📖
-            \`\`\`
-            ${planOutput.substring(0, 60000)}
-            \`\`\`
-
-            *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Environment: \`prod\`, Workflow: \`${{ github.workflow }}\`*`;
-
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: output
-            })
 
   terraform-apply-prod:
     name: Terraform Apply (PROD)
@@ -454,39 +271,36 @@ jobs:
     defaults:
       run:
         working-directory: ./Layers/EC2CleanUp/lambda
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
-
-      - name: Terraform Init (PROD)
+      - name: Setup Backend Config
+        run: |
+          BUCKET_NAME=$(aws s3api list-buckets --query "Buckets[?starts_with(Name, 'prod-ec2-snapshot-cleanup')].Name" --output text 2>/dev/null | head -1 || grep -E "^bucket\s*=" ${{ github.workspace }}/environment/prod/backend.hcl | sed -E 's/^[^"]*"([^"]+)".*/\1/' | head -1 || echo "")
+          [ -z "$BUCKET_NAME" ] && echo "❌ Could not find backend bucket" && exit 1
+          echo "# Backend configuration for prod environment" > ${{ github.workspace }}/environment/prod/backend.hcl
+          echo "# Auto-generated bucket name: $BUCKET_NAME" >> ${{ github.workspace }}/environment/prod/backend.hcl
+          echo "bucket         = \"$BUCKET_NAME\"" >> ${{ github.workspace }}/environment/prod/backend.hcl
+          echo "dynamodb_table = \"prod-terraform-state-lock\"" >> ${{ github.workspace }}/environment/prod/backend.hcl
+      - name: Terraform Init
         run: terraform init -backend-config=${{ github.workspace }}/environment/prod/backend.hcl
-
-      - name: Terraform Apply (PROD)
+      - name: Terraform Apply
         run: terraform apply -auto-approve -var-file=${{ github.workspace }}/environment/prod/terraform.tfvars
-
-      - name: Terraform Output (PROD)
-        id: output-prod
+      - name: Terraform Output
         run: terraform output -json > ${{ github.workspace }}/environment/prod/output.json
         continue-on-error: true
-
-      - name: Upload Terraform Output (PROD)
+      - name: Upload Terraform Output
         uses: actions/upload-artifact@v4
-        if: steps.output-prod.outcome == 'success'
         with:
           name: terraform-output-prod
           path: environment/prod/output.json
           retention-days: 7
+        continue-on-error: true
