@@ -5,6 +5,8 @@
 .terraform.lock.hcl
 terraform.tfvars
 *.tfvars
+# Allow environment-specific tfvars files (they should be tracked)
+!environment/**/*.tfvars
 # backend.tf contains actual backend config - keep it commented or out of repo
 # backend.tf
 

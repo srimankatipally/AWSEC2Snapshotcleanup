@@ -119,6 +119,17 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Verify environment files exist (DEV)
+        run: |
+          echo "Workspace: ${{ github.workspace }}"
+          echo "Working directory: $(pwd)"
+          echo "Checking for backend.hcl..."
+          ls -la ${{ github.workspace }}/environment/dev/backend.hcl || echo "❌ backend.hcl not found"
+          echo "Checking for terraform.tfvars..."
+          ls -la ${{ github.workspace }}/environment/dev/terraform.tfvars || echo "❌ terraform.tfvars not found"
+          echo "Listing environment/dev directory:"
+          ls -la ${{ github.workspace }}/environment/dev/ || echo "❌ environment/dev directory not found"
+
       - name: Terraform Init (DEV)
         run: terraform init -backend-config=${{ github.workspace }}/environment/dev/backend.hcl
 
@@ -238,6 +249,17 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify environment files exist (PROD)
+        run: |
+          echo "Workspace: ${{ github.workspace }}"
+          echo "Working directory: $(pwd)"
+          echo "Checking for backend.hcl..."
+          ls -la ${{ github.workspace }}/environment/prod/backend.hcl || echo "❌ backend.hcl not found"
+          echo "Checking for terraform.tfvars..."
+          ls -la ${{ github.workspace }}/environment/prod/terraform.tfvars || echo "❌ terraform.tfvars not found"
+          echo "Listing environment/prod directory:"
+          ls -la ${{ github.workspace }}/environment/prod/ || echo "❌ environment/prod directory not found"
 
       - name: Terraform Init (PROD)
         run: terraform init -backend-config=${{ github.workspace }}/environment/prod/backend.hcl
