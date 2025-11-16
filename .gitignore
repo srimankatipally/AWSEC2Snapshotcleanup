@@ -32,6 +32,7 @@ tfplan
 #Local scripts
 deploy-dev.sh
 destroy-dev.sh
+generate-graphs.sh
 # OS
 .DS_Store
 Thumbs.db
@@ -49,4 +50,9 @@ environment/*/output.json
 
 # GitHub Actions artifacts
 .github/workflows/*.log
+
+# Terraform dependency graphs (generated files)
+graphs/
+*.dot
+*.png
 

@@ -39,10 +39,8 @@ jobs:
       - name: Validate Confirmation
         run: |
           if [ "${{ inputs.confirm_destroy }}" != "DESTROY" ]; then
-            echo "❌ Destruction cancelled. You must type 'DESTROY' to confirm."
             exit 1
           fi
-          echo "✅ Confirmation validated. Proceeding with destruction of ${{ inputs.environment }} environment..."
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -60,14 +58,13 @@ jobs:
       - name: Setup Backend Config
         run: |
           BUCKET_NAME=$(aws s3api list-buckets --query "Buckets[?starts_with(Name, '${{ inputs.environment }}-ec2-snapshot-cleanup')].Name" --output text 2>/dev/null | tr '\t' '\n' | head -1 || grep -E "^bucket\s*=" ${{ github.workspace }}/environment/${{ inputs.environment }}/backend.hcl 2>/dev/null | sed -E 's/^[^"]*"([^"]+)".*/\1/' | head -1 || echo "")
-          [ -z "$BUCKET_NAME" ] && echo "❌ Could not find backend bucket" && exit 1
+          [ -z "$BUCKET_NAME" ] && exit 1
           cat > ${{ github.workspace }}/environment/${{ inputs.environment }}/backend.hcl <<EOF
           # Backend configuration for ${{ inputs.environment }} environment
           # Auto-generated bucket name: $BUCKET_NAME
           bucket         = "$BUCKET_NAME"
           dynamodb_table = "${{ inputs.environment }}-terraform-state-lock"
           EOF
-          echo "✅ Using backend bucket: $BUCKET_NAME"
 
       - name: Terraform Init
         run: terraform init -backend-config=${{ github.workspace }}/environment/${{ inputs.environment }}/backend.hcl
@@ -81,7 +78,6 @@ jobs:
       - name: Show Destroy Plan
         if: steps.plan-destroy.outcome == 'failure'
         run: |
-          echo "❌ Terraform Plan (Destroy) failed:"
           cat destroy_plan.txt
 
       - name: Terraform Plan Status
@@ -90,25 +86,9 @@ jobs:
 
       - name: Terraform Destroy
         run: |
-          echo "🔥 Starting infrastructure destruction for ${{ inputs.environment }} environment..."
-          echo "⚠️  This will destroy ALL resources including:"
-          echo "   - Lambda Function"
-          echo "   - EventBridge Rules"
-          echo "   - VPC Endpoints"
-          echo "   - Security Groups"
-          echo "   - Subnets"
-          echo "   - VPC"
-          echo "   - IAM Roles"
-          echo "   - CloudWatch Log Groups"
-          echo ""
-          echo "⏳ Destroying infrastructure..."
-          
           terraform destroy -auto-approve -var-file=${{ github.workspace }}/environment/${{ inputs.environment }}/terraform.tfvars
 
       - name: Destroy Summary
         if: always()
         run: |
-          echo "✅ Infrastructure destruction for ${{ inputs.environment }} environment completed successfully"
-          echo ""
-          echo "ℹ️  Note: Backend resources (S3 bucket and DynamoDB table) are preserved."
-          echo "   To destroy backend resources, uncomment the backend destruction job in the workflow."
+          :

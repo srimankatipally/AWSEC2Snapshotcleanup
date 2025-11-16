@@ -29,7 +29,7 @@ resource "aws_subnet" "private" {
   }
 }
 
-# Route Table for Private Subnets (no internet routes needed)
+# Route Table for Private Subnets 
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
 

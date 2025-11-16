@@ -53,12 +53,12 @@ jobs:
       - name: Terraform Init
         run: terraform init
       - name: Terraform Apply
-        run: terraform apply -auto-approve -var="environment=${{ matrix.environment }}" -var="bucket_name=ec2-snapshot-cleanup" -var="dynamodb_table_name=terraform-state-lock" -var="aws_region=${{ env.AWS_REGION }}"
+        run: terraform apply -auto-approve -var="environment=${{ matrix.environment }}" -var="bucket_name=ec2-snapshot-cleanup" -var="aws_region=${{ env.AWS_REGION }}"
         continue-on-error: true
       - name: Get Backend Output
         run: |
           BUCKET_NAME=$(terraform output -raw s3_bucket_name 2>/dev/null || grep -E "^bucket\s*=" ${{ github.workspace }}/environment/${{ matrix.environment }}/backend.hcl | sed -E 's/^[^"]*"([^"]+)".*/\1/' | head -1 || echo "")
-          [ -n "$BUCKET_NAME" ] && echo "✅ Backend bucket: $BUCKET_NAME" || true
+          [ -n "$BUCKET_NAME" ] || true
 
   lambda-lint-test:
     name: Lambda Lint & Test
@@ -151,12 +151,11 @@ jobs:
       - name: Setup Backend Config
         run: |
           BUCKET_NAME=$(aws s3api list-buckets --query "Buckets[?starts_with(Name, 'dev-ec2-snapshot-cleanup')].Name" --output text 2>/dev/null | tr '\t' '\n' | head -1 || grep -E "^bucket\s*=" ${{ github.workspace }}/environment/dev/backend.hcl 2>/dev/null | sed -E 's/^[^"]*"([^"]+)".*/\1/' | head -1 || echo "")
-          [ -z "$BUCKET_NAME" ] && echo "❌ Could not find backend bucket" && exit 1
+          [ -z "$BUCKET_NAME" ] && exit 1
           cat > ${{ github.workspace }}/environment/dev/backend.hcl <<EOF
           # Backend configuration for dev environment
           # Auto-generated bucket name: $BUCKET_NAME
           bucket         = "$BUCKET_NAME"
-          dynamodb_table = "dev-terraform-state-lock"
           EOF
       - name: Terraform Init
         run: terraform init -backend-config=${{ github.workspace }}/environment/dev/backend.hcl
@@ -166,7 +165,7 @@ jobs:
         continue-on-error: true
       - name: Show Plan Output
         if: steps.plan.outcome == 'failure'
-        run: echo "❌ Terraform Plan failed:" && cat plan_output_dev.txt && exit 1
+        run: cat plan_output_dev.txt && exit 1
       - name: Comment PR with Plan
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
@@ -199,12 +198,11 @@ jobs:
       - name: Setup Backend Config
         run: |
           BUCKET_NAME=$(aws s3api list-buckets --query "Buckets[?starts_with(Name, 'prod-ec2-snapshot-cleanup')].Name" --output text 2>/dev/null | tr '\t' '\n' | head -1 || grep -E "^bucket\s*=" ${{ github.workspace }}/environment/prod/backend.hcl 2>/dev/null | sed -E 's/^[^"]*"([^"]+)".*/\1/' | head -1 || echo "")
-          [ -z "$BUCKET_NAME" ] && echo "❌ Could not find backend bucket" && exit 1
+          [ -z "$BUCKET_NAME" ] && exit 1
           cat > ${{ github.workspace }}/environment/prod/backend.hcl <<EOF
           # Backend configuration for prod environment
           # Auto-generated bucket name: $BUCKET_NAME
           bucket         = "$BUCKET_NAME"
-          dynamodb_table = "prod-terraform-state-lock"
           EOF
       - name: Terraform Init
         run: terraform init -backend-config=${{ github.workspace }}/environment/prod/backend.hcl
@@ -214,7 +212,7 @@ jobs:
         continue-on-error: true
       - name: Show Plan Output
         if: steps.plan.outcome == 'failure'
-        run: echo "❌ Terraform Plan failed:" && cat plan_output_prod.txt
+        run: cat plan_output_prod.txt
       - name: Comment PR with Plan
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
@@ -247,12 +245,11 @@ jobs:
       - name: Setup Backend Config
         run: |
           BUCKET_NAME=$(aws s3api list-buckets --query "Buckets[?starts_with(Name, 'dev-ec2-snapshot-cleanup')].Name" --output text 2>/dev/null | tr '\t' '\n' | head -1 || grep -E "^bucket\s*=" ${{ github.workspace }}/environment/dev/backend.hcl 2>/dev/null | sed -E 's/^[^"]*"([^"]+)".*/\1/' | head -1 || echo "")
-          [ -z "$BUCKET_NAME" ] && echo "❌ Could not find backend bucket" && exit 1
+          [ -z "$BUCKET_NAME" ] && exit 1
           cat > ${{ github.workspace }}/environment/dev/backend.hcl <<EOF
           # Backend configuration for dev environment
           # Auto-generated bucket name: $BUCKET_NAME
           bucket         = "$BUCKET_NAME"
-          dynamodb_table = "dev-terraform-state-lock"
           EOF
       - name: Terraform Init
         run: terraform init -backend-config=${{ github.workspace }}/environment/dev/backend.hcl
@@ -291,12 +288,11 @@ jobs:
       - name: Setup Backend Config
         run: |
           BUCKET_NAME=$(aws s3api list-buckets --query "Buckets[?starts_with(Name, 'prod-ec2-snapshot-cleanup')].Name" --output text 2>/dev/null | tr '\t' '\n' | head -1 || grep -E "^bucket\s*=" ${{ github.workspace }}/environment/prod/backend.hcl 2>/dev/null | sed -E 's/^[^"]*"([^"]+)".*/\1/' | head -1 || echo "")
-          [ -z "$BUCKET_NAME" ] && echo "❌ Could not find backend bucket" && exit 1
+          [ -z "$BUCKET_NAME" ] && exit 1
           cat > ${{ github.workspace }}/environment/prod/backend.hcl <<EOF
           # Backend configuration for prod environment
           # Auto-generated bucket name: $BUCKET_NAME
           bucket         = "$BUCKET_NAME"
-          dynamodb_table = "prod-terraform-state-lock"
           EOF
       - name: Terraform Init
         run: terraform init -backend-config=${{ github.workspace }}/environment/prod/backend.hcl
