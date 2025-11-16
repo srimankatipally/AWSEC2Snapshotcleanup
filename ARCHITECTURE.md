@@ -38,7 +38,6 @@ graph TB
         
         subgraph Backend["Terraform Backend<br/>(State Management)"]
             S3Bucket["S3 Bucket<br/>State Storage<br/>Versioning Enabled"]
-            DynamoDB["DynamoDB Table<br/>State Locking<br/>Pay-per-request"]
         end
         
         subgraph CI_CD["CI/CD"]
@@ -72,12 +71,11 @@ graph TB
     
     %% Infrastructure
     GitHubActions -.->|Bootstrap| S3Bucket
-    GitHubActions -.->|Bootstrap| DynamoDB
     GitHubActions -.->|Deploys| VPC
     GitHubActions -.->|Deploys| Lambda
     GitHubActions -.->|Deploys| EventBridge
     GitHubActions -.->|Stores State| S3Bucket
-    GitHubActions -.->|Locks State| DynamoDB
+    GitHubActions -.->|Locks State| S3
     
     %% Styling
     classDef lambda fill:#ff9900,stroke:#ff6600,stroke-width:2px,color:#fff
@@ -92,7 +90,7 @@ graph TB
     class LambdaRole,LambdaPolicy iam
     class EventRule,LogGroup,Metrics monitoring
     class Snapshots storage
-    class S3Bucket,DynamoDB backend
+    class S3Bucket backend
 ```
 
 ## Component Details
@@ -204,13 +202,13 @@ This architecture consists of two infrastructure layers:
 ┌─────────────────────────────────────────┐
 │      Terraform Backend Infrastructure   │
 │                                         │
-│  ┌──────────────┐  ┌──────────────┐   │
-│  │ S3 Bucket    │  │ DynamoDB     │   │
-│  │              │  │ Table        │   │
-│  │ • Versioning │  │ • Pay-per-   │   │
-│  │ • Encryption │  │   request    │   │
-│  │ • Lifecycle  │  │ • LockID key │   │
-│  └──────────────┘  └──────────────┘   │
+│  ┌──────────────┐                       │
+│  │ S3 Bucket    │                       │
+│  │              │                       │
+│  │ • Versioning │                       │
+│  │ • Encryption │                       │
+│  │ • Lifecycle  │                       │
+│  └──────────────┘  
 │                                         │
 │  Environment-Specific:                 │
 │  • dev-ec2-snapshot-cleanup            │
@@ -220,7 +218,6 @@ This architecture consists of two infrastructure layers:
 
 **Components:**
 - **S3 Bucket**: Stores Terraform state files with versioning and encryption
-- **DynamoDB Table**: Provides state locking to prevent concurrent modifications
 - **Environment Isolation**: Separate backends per environment (dev/prod)
 
 ### 2. Application Infrastructure (Snapshot Cleanup)
@@ -243,7 +240,7 @@ Step 1: Bootstrap Backend (One-time per environment)
 │  terraform apply \                         │
 │    -var="environment=dev" \                │
 │    -var="bucket_name=ec2-snapshot-cleanup" │
-│    -var="dynamodb_table_name=terraform-    │
+│                                            │
 │      state-lock"                           │
 └─────────────────────────────────────────┘
        │
@@ -251,8 +248,7 @@ Step 1: Bootstrap Backend (One-time per environment)
 ┌─────────────────────────────────────────┐
 │  Creates:                                 │
 │  • S3 Bucket (dev-ec2-snapshot-cleanup)  │
-│  • DynamoDB Table (dev-terraform-state-  │
-│    lock)                                  │
+│                                          │
 └─────────────────────────────────────────┘
        │
        ▼
@@ -300,9 +296,9 @@ Step 2: Deploy Application Infrastructure
 ┌─────────────────────────────────────────┐
 │  State Management:                       │
 │  • Reads state from S3                   │
-│  • Acquires lock in DynamoDB             │
+│  • Acquires lock in S3                   │
 │  • Updates state in S3                   │
-│  • Releases lock in DynamoDB             │
+│  • Releases lock in S3                   │
 └─────────────────────────────────────────┘
        │
        ▼
@@ -318,7 +314,6 @@ AWSEC2Snapshotcleanup/
 ├── Layers/EC2CleanUp/           # Shared/common resources
 │   ├── base/                    # Backend infrastructure (Terraform state)
 │   │   ├── s3.tf               # S3 bucket configuration
-│   │   ├── dynamodb.tf         # DynamoDB table configuration
 │   │   ├── provider.tf         # Provider configuration
 │   │   ├── versions.tf         # Terraform version requirements
 │   │   ├── variables.tf        # Variable definitions
@@ -355,7 +350,6 @@ The architecture supports **multi-environment deployments** with complete isolat
 | Component | Dev Environment | Prod Environment |
 |-----------|----------------|-----------------|
 | **Backend S3** | `dev-ec2-snapshot-cleanup` | `prod-ec2-snapshot-cleanup` |
-| **Backend DynamoDB** | `dev-terraform-state-lock` | `prod-terraform-state-lock` |
 | **Lambda Function** | `dev-ec2-snapshot-cleanup` | `prod-ec2-snapshot-cleanup` |
 | **VPC** | `dev-snapshot-cleanup-vpc` | `prod-snapshot-cleanup-vpc` |
 | **State File** | `terraform.tfstate` (in dev bucket) | `terraform.tfstate` (in prod bucket) |

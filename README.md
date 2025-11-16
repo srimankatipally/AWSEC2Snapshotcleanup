@@ -52,7 +52,6 @@ terraform init
 terraform apply \
   -var="environment=dev" \
   -var="bucket_name=ec2-snapshot-cleanup" \
-  -var="dynamodb_table_name=terraform-state-lock" \
   -var="aws_region=us-west-2"
 ```
 
@@ -221,9 +220,8 @@ timeout = 600  # 10 minutes
 ```
 AWSEC2Snapshotcleanup/
 ├── Layers/EC2CleanUp/           # Shared/common resources
-│   ├── base/                    # Backend infrastructure (S3 + DynamoDB)
+│   ├── base/                    # Backend infrastructure (S3)
 │   │   ├── s3.tf
-│   │   ├── dynamodb.tf
 │   │   ├── provider.tf
 │   │   ├── versions.tf
 │   │   ├── variables.tf

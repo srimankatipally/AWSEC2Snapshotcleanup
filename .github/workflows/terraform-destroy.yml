@@ -63,7 +63,6 @@ jobs:
           # Backend configuration for ${{ inputs.environment }} environment
           # Auto-generated bucket name: $BUCKET_NAME
           bucket         = "$BUCKET_NAME"
-          dynamodb_table = "${{ inputs.environment }}-terraform-state-lock"
           EOF
 
       - name: Terraform Init
