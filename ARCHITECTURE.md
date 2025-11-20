@@ -289,7 +289,7 @@ Step 2: Deploy Application Infrastructure
 │  ├──► terraform plan                    │
 │  └──► terraform apply (on main branch)  │
 │                                         │
-│  Note: Assumes backend already exists   │
+│                                         │
 └──────┬──────────────────────────────────┘
        │
        ▼
